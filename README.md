@@ -32,7 +32,7 @@ Start a kafka shell inside docker
 `./kafka-shell.sh`
 
 ```bash
-> $KAFKA_HOME/bin/kafka-console-consumer.sh --topic=foo --bootstrap-server=kafka:9092
+$KAFKA_HOME/bin/kafka-console-consumer.sh --topic=foo --bootstrap-server=kafka:9092
 ```
 
 Start another shell in new terminal window
