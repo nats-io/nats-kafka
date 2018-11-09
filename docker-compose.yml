@@ -11,6 +11,14 @@ services:
     container_name: nats-tools
     build: .
     image: nats-tools
+  nkb:
+    container_name: nkb
+    build: ./nkb
+    image: nkb
+    depends_on:
+      - nats
+      - kafka
+    command: "-ns nats -ks kafka:9092"
   zookeeper:
     container_name: zookeeper
     image: wurstmeister/zookeeper
