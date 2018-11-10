@@ -40,7 +40,7 @@ Start another shell in new terminal window
 `./kafka-shell.sh`
 
 ```bash
-$KAFKA_HOME/bin/kafka-console-producer.sh --topic=bar --broker-list=kafka:9092
+$KAFKA_HOME/bin/kafka-console-producer.sh --topic=bar --broker-list=kafka:9092 --sync --timeout=0
 ```
 
 Note: Kafka Producer is interactive, enter some text hit <return> to send.
