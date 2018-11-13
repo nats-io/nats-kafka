@@ -11,7 +11,7 @@ Docker Compose will create a default network nats-kafka_default
 
 ## NATS
 
-NATS core and streaming are availble. The NATS server is at nats:4222 when inside Docker environment.
+NATS core and streaming are available. The NATS server is at nats:4222 when inside Docker environment.
 
 ## Kafka
 
@@ -22,7 +22,7 @@ We create 'foo', 'bar', and 'test' topics by default for Kafka.
 This will be started and by default be running a mapping as follows. This can be overridden.
 Note that the mapping to and from NATS does both NATS and STAN
 
-```
+```text
 Mapping Inbound NATS Subject "foo" to Kafka Topic: "foo"
 Mapping Inbound Kafka Topic: "bar" to NATS Subject: "bar"
 ```
@@ -43,11 +43,11 @@ Start another shell in new terminal window
 $KAFKA_HOME/bin/kafka-console-producer.sh --topic=bar --broker-list=kafka:9092 --sync --timeout=0
 ```
 
-Note: Kafka Producer is interactive, enter some text hit <return> to send.
+Note: Kafka Producer is interactive, enter some text and hit *return* to send.
 
 Also start up a NATS and STAN subscriber. You do not have to do these inside the docker env.
 
-```
+```bash
 stan-sub -c STAN -id=test bar
 nats-sub bar
 ```
