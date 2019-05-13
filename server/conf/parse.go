@@ -175,6 +175,13 @@ func get(data map[string]interface{}, key string, confTag string) interface{} {
 		return val
 	}
 
+	// Worst case, lower case all the possibles
+	for k, v := range data {
+		if strings.ToLower(k) == key {
+			return v
+		}
+	}
+
 	return nil
 }
 
