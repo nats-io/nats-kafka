@@ -244,7 +244,6 @@ func (conn *BridgeConnector) subscribeToChannel(dest *kafka.Writer) (stan.Subscr
 		start := time.Now()
 		l := int64(len(msg.Data))
 
-		conn.bridge.Logger().Tracef("%s received message", conn.String())
 		err := dest.WriteMessages(context.Background(),
 			kafka.Message{
 				Key:   conn.calculateKey(conn.config.Channel, conn.config.DurableName),
@@ -255,10 +254,8 @@ func (conn *BridgeConnector) subscribeToChannel(dest *kafka.Writer) (stan.Subscr
 			conn.stats.AddMessageIn(l)
 			conn.bridge.Logger().Noticef("connector publish failure, %s, %s", conn.String(), err.Error())
 		} else {
-			conn.bridge.Logger().Tracef("%s wrote message to kafka", conn.String())
 			msg.Ack()
 			conn.stats.AddRequest(l, l, time.Since(start))
-			conn.bridge.Logger().Tracef("%s acked message to kafka", conn.String())
 		}
 	}
 
