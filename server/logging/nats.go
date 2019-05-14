@@ -24,13 +24,20 @@ import (
 func NewNATSLogger(conf Config) Logger {
 	l := logger.NewStdLogger(conf.Time, conf.Debug, conf.Trace, conf.Colors, conf.PID)
 	return &NATSLogger{
-		logger: l,
+		logger:       l,
+		traceEnabled: conf.Trace,
 	}
 }
 
 // NATSLogger - uses the gnatsd logging code
 type NATSLogger struct {
-	logger *logger.Logger
+	logger       *logger.Logger
+	traceEnabled bool
+}
+
+// TraceEnabled returns true if tracing is configured, useful for fast path logging
+func (logger *NATSLogger) TraceEnabled() bool {
+	return logger.traceEnabled
 }
 
 // Close forwards to the nats logger

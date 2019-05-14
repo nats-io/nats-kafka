@@ -18,6 +18,8 @@ package logging
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNATSForCoverage(t *testing.T) {
@@ -27,6 +29,8 @@ func TestNATSForCoverage(t *testing.T) {
 	logger.Noticef("test")
 	logger.Errorf("test")
 	logger.Warnf("test")
+
+	require.False(t, logger.TraceEnabled())
 	// skip fatal
 	logger.Close()
 }

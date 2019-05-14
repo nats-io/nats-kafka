@@ -184,6 +184,7 @@ func (conn *BridgeConnector) calculateKey(subject string, replyto string) []byte
 
 // set up a nats subscription, assumes the lock is held
 func (conn *BridgeConnector) subscribeToNATS(subject string, natsQueue string, dest *kafka.Writer) (*nats.Subscription, error) {
+	traceEnabled := conn.bridge.Logger().TraceEnabled()
 	callback := func(msg *nats.Msg) {
 		start := time.Now()
 		l := int64(len(msg.Data))
@@ -196,6 +197,9 @@ func (conn *BridgeConnector) subscribeToNATS(subject string, natsQueue string, d
 			})
 
 		if err != nil {
+			if traceEnabled {
+				conn.bridge.Logger().Tracef("%s wrote message to kafka", conn.String())
+			}
 			conn.stats.AddMessageIn(l)
 			conn.bridge.Logger().Noticef("connector publish failure, %s, %s", conn.String(), err.Error())
 		} else {
@@ -239,14 +243,20 @@ func (conn *BridgeConnector) subscribeToChannel(dest *kafka.Writer) (stan.Subscr
 	}
 
 	options = append(options, stan.SetManualAckMode())
+	traceEnabled := conn.bridge.Logger().TraceEnabled()
 
 	callback := func(msg *stan.Msg) {
 		start := time.Now()
 		l := int64(len(msg.Data))
 
+		if traceEnabled {
+			conn.bridge.Logger().Tracef("%s received message", conn.String())
+		}
+
+		key := conn.calculateKey(conn.config.Channel, conn.config.DurableName)
 		err := dest.WriteMessages(context.Background(),
 			kafka.Message{
-				Key:   conn.calculateKey(conn.config.Channel, conn.config.DurableName),
+				Key:   key,
 				Value: msg.Data,
 			})
 
@@ -254,7 +264,13 @@ func (conn *BridgeConnector) subscribeToChannel(dest *kafka.Writer) (stan.Subscr
 			conn.stats.AddMessageIn(l)
 			conn.bridge.Logger().Noticef("connector publish failure, %s, %s", conn.String(), err.Error())
 		} else {
+			if traceEnabled {
+				conn.bridge.Logger().Tracef("%s wrote message to kafka with key %s", conn.String(), string(key))
+			}
 			msg.Ack()
+			if traceEnabled {
+				conn.bridge.Logger().Tracef("%s acked message to kafka", conn.String())
+			}
 			conn.stats.AddRequest(l, l, time.Since(start))
 		}
 	}
@@ -358,6 +374,8 @@ func (conn *BridgeConnector) setUpListener(target *kafka.Reader, natsCallbackFun
 	ctx := context.Background()
 	cancelCtx, cancelFunc := context.WithCancel(ctx)
 
+	traceEnabled := conn.bridge.Logger().TraceEnabled()
+
 	listenerCallbackFunc := func(conn *BridgeConnector, msg kafka.Message) {
 		start := time.Now()
 		value := msg.Value
@@ -365,6 +383,9 @@ func (conn *BridgeConnector) setUpListener(target *kafka.Reader, natsCallbackFun
 		err := natsCallbackFunc(value)
 
 		if err != nil {
+			if traceEnabled {
+				conn.bridge.Logger().Tracef("%s received message from kafka", conn.String())
+			}
 			conn.stats.AddMessageIn(l)
 			conn.bridge.Logger().Noticef("publish failure for %s, %s", conn.String(), err.Error())
 			return
@@ -378,6 +399,10 @@ func (conn *BridgeConnector) setUpListener(target *kafka.Reader, natsCallbackFun
 				conn.bridge.Logger().Noticef("failed to commit, %s", err.Error())
 				go conn.bridge.ConnectorError(conn, err) // run in a go routine so we can finish this method
 				return
+			}
+
+			if traceEnabled {
+				conn.bridge.Logger().Tracef("%s committed message from kafka", conn.String())
 			}
 		}
 

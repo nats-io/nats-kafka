@@ -34,5 +34,7 @@ type Logger interface {
 	Tracef(format string, v ...interface{})
 	Warnf(format string, v ...interface{})
 
+	TraceEnabled() bool
+
 	Close() error
 }
