@@ -1,10 +1,20 @@
-FROM golang:1.11-alpine
+FROM golang:1.12.4 AS builder
 
-MAINTAINER Derek Collison <derek@nats.io>
+WORKDIR /src/nats-kafka
 
-RUN apk add --no-cache git
-RUN go get github.com/nats-io/go-nats/examples/nats-pub \
-  && go get github.com/nats-io/go-nats/examples/nats-sub \
-  && go get github.com/nats-io/go-nats/examples/nats-qsub \
-  && go get github.com/nats-io/go-nats-streaming/examples/stan-sub \
-  && go get github.com/nats-io/go-nats-streaming/examples/stan-pub
+LABEL maintainer "Stephen Asbury <sasbury@nats.io>"
+
+COPY . .
+
+RUN go mod download
+RUN CGO_ENABLED=0 go build -v -a -tags netgo -installsuffix netgo -o /nats-kafka
+
+FROM alpine:3.9
+
+RUN mkdir -p /nats/bin && mkdir /nats/conf
+
+COPY --from=builder /nats-kafka /nats/bin/nats-kafka
+
+RUN ln -ns /nats/bin/nats-kafka /bin/nats-kafka
+
+ENTRYPOINT ["/bin/nats-kafka"]

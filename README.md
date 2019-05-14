@@ -1,66 +1,65 @@
-# Demo of NATS and Kafka
+![NATS](logos/large-logo.png)
 
-Docker is required.
+# NATS-Kafka Bridge
 
-To start the cluster with Kafka, ZooKeeper, NATS and NATS Streaming
+[![License][License-Image]][License-Url]
+[![ReportCard][ReportCard-Image]][ReportCard-Url]
+[![Build][Build-Status-Image]][Build-Status-Url]
+[![Coverage][Coverage-Image]][Coverage-Url]
 
-`docker-compose up -d`
+This project implements a multi-connector bridge between NATS or NATS streaming and Kafka topics.
 
-Docker Compose will create a default network nats-kafka_default
-`docker-compose ps` will show you all the services.
+## Features
 
-## NATS
+* Support for bridging from/to Kafka topics
+* Arbitrary subjects in NATS, wildcards for incoming messages
+* Arbitrary channels in NATS streaming
+* Optional durable subscriber names for streaming
+* Configurable std-out logging
+* A single configuration file, with support for reload
+* Optional SSL to/from Kafka, NATS and NATS streaming
+* HTTP/HTTPS-based monitoring endpoints for health or statistics
 
-NATS core and streaming are availble. The NATS server is at nats:4222 when inside Docker environment.
+## Overview
 
-## Kafka
+The bridge runs as a single process with a configured set of connectors mapping a Kafka topic to a NATS subject or a NATS streaming channel. Connectors can also map the opposite direction from NATS to Kafka. Each connector is a one-way bridge.
 
-We create 'foo', 'bar', and 'test' topics by default for Kafka.
+Connectors share a NATS connection and an optional connection to the NATS streaming server. **Connectors each create a connection to Kafka, subject to TCP connection sharing in the underlying library**
 
-## NATS to Kafka Bridge
+Message values in Kafka are mapped to message bodies in NATS.
 
-This will be started and by default be running a mapping as follows. This can be overridden.
-Note that the mapping to and from NATS does both NATS and STAN
+Messages coming from NATS to Kafka can have their key set in a variety of ways, see [Configuration](docs/config.md). Messages coming from Kafka will have their key ignored.
 
-```
-Mapping Inbound NATS Subject "foo" to Kafka Topic: "foo"
-Mapping Inbound Kafka Topic: "bar" to NATS Subject: "bar"
-```
+Request-reply is not supported.
 
-Start a kafka shell inside docker
+The bridge is [configured with a NATS server-like format](docs/config.md), in a single file and uses the NATS logger.
 
-`./kafka-shell.sh`
+An [optional HTTP/HTTPS endpoint](docs/monitoring.md) can be used for monitoring.
 
-```bash
-$KAFKA_HOME/bin/kafka-console-consumer.sh --topic=foo --bootstrap-server=kafka:9092
-```
+## Documentation
 
-Start another shell in new terminal window
+* [Build & Run the Bridge](docs/buildandrun.md)
+* [Configuration](docs/config.md)
+* [Monitoring](docs/monitoring.md)
 
-`./kafka-shell.sh`
+## External Resources
 
-```bash
-$KAFKA_HOME/bin/kafka-console-producer.sh --topic=bar --broker-list=kafka:9092 --sync --timeout=0
-```
+* [NATS](https://nats.io/documentation/)
+* [NATS server](https://github.com/nats-io/gnatsd)
+* [NATS Streaming](https://github.com/nats-io/nats-streaming-server)
+* [Kafka](https://kafka.apache.org/)
 
-Note: Kafka Producer is interactive, enter some text hit <return> to send.
+[License-Url]: https://www.apache.org/licenses/LICENSE-2.0
+[License-Image]: https://img.shields.io/badge/License-Apache2-blue.svg
+[Build-Status-Url]: https://travis-ci.com/nats-io/nats-kafka
+[Build-Status-Image]: https://travis-ci.com/nats-io/nats-kafka.svg?branch=master
+[Coverage-Url]: https://coveralls.io/r/nats-io/nats-kafka?branch=master
+[Coverage-image]: https://coveralls.io/repos/github/nats-io/nats-kafka/badge.svg?branch=master
+[ReportCard-Url]: https://goreportcard.com/report/nats-io/nats-kafka
+[ReportCard-Image]: https://goreportcard.com/badge/github.com/nats-io/nats-kafka
 
-Also start up a NATS and STAN subscriber. You do not have to do these inside the docker env.
+<a name="license"></a>
 
-```
-stan-sub -c STAN -id=test bar
-nats-sub bar
-```
+## License
 
-To start a shell with all the nats-tools inside docker
-
-`./nats-tools.sh` pops you into a container that has all the tools available.
-
-```bash
-# nats-sub -s nats bar &
-# stan-sub -s nats -c STAN -id test --last bar &
-
-# nats-pub -s nats foo hello
-# stan-pub -s nats -c STAN foo hello
-
-```
+Unless otherwise noted, the nats-kafka bridge source files are distributed under the Apache Version 2.0 license found in the LICENSE file.
