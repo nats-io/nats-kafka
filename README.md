@@ -36,6 +36,10 @@ The bridge is [configured with a NATS server-like format](docs/config.md), in a 
 
 An [optional HTTP/HTTPS endpoint](docs/monitoring.md) can be used for monitoring.
 
+## Todo
+
+* Integrate with travis and coveralls
+
 ## Documentation
 
 * [Build & Run the Bridge](docs/buildandrun.md)
