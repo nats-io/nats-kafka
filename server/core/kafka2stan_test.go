@@ -18,7 +18,7 @@ package core
 import (
 	"testing"
 
-	stan "github.com/nats-io/go-nats-streaming"
+	stan "github.com/nats-io/stan.go"
 	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nuid"
 	"github.com/stretchr/testify/require"

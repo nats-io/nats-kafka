@@ -21,12 +21,12 @@ import (
 	"fmt"
 	"time"
 
-	gnatsserver "github.com/nats-io/gnatsd/server"
-	gnatsd "github.com/nats-io/gnatsd/test"
-	nats "github.com/nats-io/go-nats"
-	stan "github.com/nats-io/go-nats-streaming"
+	stan "github.com/nats-io/stan.go"
 	"github.com/nats-io/nats-kafka/server/conf"
+	gnatsserver "github.com/nats-io/nats-server/v2/server"
+	gnatsd "github.com/nats-io/nats-server/v2/test"
 	nss "github.com/nats-io/nats-streaming-server/server"
+	nats "github.com/nats-io/nats.go"
 	"github.com/nats-io/nuid"
 	"github.com/segmentio/kafka-go"
 )

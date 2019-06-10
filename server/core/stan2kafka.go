@@ -19,8 +19,8 @@ package core
 import (
 	"fmt"
 
-	stan "github.com/nats-io/go-nats-streaming"
 	"github.com/nats-io/nats-kafka/server/conf"
+	stan "github.com/nats-io/stan.go"
 	"github.com/segmentio/kafka-go"
 )
 

@@ -25,10 +25,10 @@ import (
 	"sync"
 	"time"
 
-	nats "github.com/nats-io/go-nats"
-	stan "github.com/nats-io/go-nats-streaming"
 	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nats-kafka/server/logging"
+	nats "github.com/nats-io/nats.go"
+	stan "github.com/nats-io/stan.go"
 )
 
 var version = "0.0-dev"

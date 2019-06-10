@@ -24,9 +24,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nats-io/go-nats"
 	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nats-kafka/server/core"
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nuid"
 	"github.com/segmentio/kafka-go"
 )
