@@ -17,10 +17,10 @@
 package logging
 
 import (
-	"github.com/nats-io/gnatsd/logger"
+	"github.com/nats-io/nats-server/v2/logger"
 )
 
-// NewNATSLogger creates a new logger that uses the gnatsd library
+// NewNATSLogger creates a new logger that uses the nats-server library
 func NewNATSLogger(conf Config) Logger {
 	l := logger.NewStdLogger(conf.Time, conf.Debug, conf.Trace, conf.Colors, conf.PID)
 	return &NATSLogger{
@@ -29,7 +29,7 @@ func NewNATSLogger(conf Config) Logger {
 	}
 }
 
-// NATSLogger - uses the gnatsd logging code
+// NATSLogger - uses the nats-server logging code
 type NATSLogger struct {
 	logger       *logger.Logger
 	traceEnabled bool

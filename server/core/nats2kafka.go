@@ -18,8 +18,8 @@ package core
 import (
 	"fmt"
 
-	"github.com/nats-io/go-nats"
 	"github.com/nats-io/nats-kafka/server/conf"
+	"github.com/nats-io/nats.go"
 	"github.com/segmentio/kafka-go"
 )
 

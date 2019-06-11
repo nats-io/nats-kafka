@@ -406,17 +406,17 @@ func TestArraysSingletonBadValue(t *testing.T) {
 
 func TestArraysBadValue(t *testing.T) {
 	configString := `
-	 strings: 43a
-	 `
+	  strings: 43a
+	  `
 
 	config := PrimitiveArrays{}
 
 	err := LoadConfigFromString(configString, &config, false)
-	require.Error(t, err)
+	require.NoError(t, err)
 
 	configString = `
-	 ints: 43a
-	 `
+	  ints: 43a
+	  `
 	config = PrimitiveArrays{}
 	err = LoadConfigFromString(configString, &config, false)
 	require.Error(t, err)

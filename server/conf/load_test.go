@@ -76,48 +76,6 @@ func TestLoadFromFile(t *testing.T) {
 	require.Equal(t, 5.5, config.Balance)
 }
 
-func TestConfigInclude(t *testing.T) {
-	file, err := ioutil.TempFile(os.TempDir(), "prefix")
-	require.NoError(t, err)
-
-	fullPath, err := ValidateFilePath(file.Name())
-	require.NoError(t, err)
-
-	file2, err := ioutil.TempFile(os.TempDir(), "prefix")
-	require.NoError(t, err)
-
-	fullPath2, err := ValidateFilePath(file2.Name())
-	require.NoError(t, err)
-
-	configString := `
-	Name: "stephen"
-	Age: 28
-
-	`
-
-	configString = configString + "include " + fullPath2
-
-	configString2 := `
-	OptOut: true
-	Balance: 5.5
-	`
-
-	err = ioutil.WriteFile(fullPath, []byte(configString), 0644)
-	require.NoError(t, err)
-
-	err = ioutil.WriteFile(fullPath2, []byte(configString2), 0644)
-	require.NoError(t, err)
-
-	config := SimpleConf{}
-
-	err = LoadConfigFromFile(fullPath, &config, false)
-	require.NoError(t, err)
-	require.Equal(t, "stephen", config.Name)
-	require.Equal(t, int64(28), config.Age)
-	require.Equal(t, true, config.OptOut)
-	require.Equal(t, 5.5, config.Balance)
-}
-
 func TestLoadFromMissingFile(t *testing.T) {
 	config := SimpleConf{}
 	err := LoadConfigFromFile("/foo/bar/baz", &config, false)

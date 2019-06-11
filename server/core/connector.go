@@ -22,10 +22,10 @@ import (
 	"sync"
 	"time"
 
-	nats "github.com/nats-io/go-nats"
-	stan "github.com/nats-io/go-nats-streaming"
 	"github.com/nats-io/nats-kafka/server/conf"
+	nats "github.com/nats-io/nats.go"
 	"github.com/nats-io/nuid"
+	stan "github.com/nats-io/stan.go"
 	"github.com/segmentio/kafka-go"
 )
 

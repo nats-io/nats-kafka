@@ -49,7 +49,7 @@ An [optional HTTP/HTTPS endpoint](docs/monitoring.md) can be used for monitoring
 ## External Resources
 
 * [NATS](https://nats.io/documentation/)
-* [NATS server](https://github.com/nats-io/gnatsd)
+* [NATS server](https://github.com/nats-io/nats-server)
 * [NATS Streaming](https://github.com/nats-io/nats-streaming-server)
 * [Kafka](https://kafka.apache.org/)
 
