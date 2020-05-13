@@ -20,21 +20,18 @@ import (
 
 	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nats.go"
-	"github.com/segmentio/kafka-go"
 )
 
 // NATS2KafkaConnector connects a NATS subject to a Kafka topic
 type NATS2KafkaConnector struct {
 	BridgeConnector
-
-	writer *kafka.Writer
-	sub    *nats.Subscription
+	sub *nats.Subscription
 }
 
 // NewNATS2KafkaConnector create a nats to MQ connector
 func NewNATS2KafkaConnector(bridge *NATSKafkaBridge, config conf.ConnectorConfig) Connector {
 	connector := &NATS2KafkaConnector{}
-	connector.init(bridge, config, fmt.Sprintf("NATS:%s to Kafka:%s", config.Subject, config.Topic))
+	connector.init(bridge, config, config.Topic, fmt.Sprintf("NATS:%s to Kafka:%s", config.Subject, config.Topic))
 	return connector
 }
 
@@ -49,13 +46,7 @@ func (conn *NATS2KafkaConnector) Start() error {
 
 	conn.bridge.Logger().Tracef("starting connection %s", conn.String())
 
-	conn.writer = conn.connectWriter()
-
-	if conn.writer == nil {
-		return fmt.Errorf("failed to connect to kafka writer for %s", conn.stats.Name())
-	}
-
-	sub, err := conn.subscribeToNATS(conn.config.Subject, conn.config.QueueName, conn.writer)
+	sub, err := conn.subscribeToNATS(conn.config.Subject, conn.config.QueueName)
 	if err != nil {
 		return err
 	}
@@ -72,6 +63,7 @@ func (conn *NATS2KafkaConnector) Start() error {
 func (conn *NATS2KafkaConnector) Shutdown() error {
 	conn.Lock()
 	defer conn.Unlock()
+	conn.closeWriters()
 	conn.stats.AddDisconnect()
 
 	conn.bridge.Logger().Noticef("shutting down connection %s", conn.String())
@@ -81,16 +73,7 @@ func (conn *NATS2KafkaConnector) Shutdown() error {
 		conn.sub = nil
 	}
 
-	var err error
-
-	writer := conn.writer
-	conn.writer = nil
-
-	if writer != nil {
-		err = writer.Close()
-	}
-
-	return err // ignore the disconnect error
+	return nil
 }
 
 // CheckConnections ensures the nats/stan connection and report an error if it is down
