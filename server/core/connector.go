@@ -16,10 +16,14 @@
 package core
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"regexp"
+	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/nats-io/nats-kafka/server/conf"
@@ -65,9 +69,13 @@ func CreateConnector(config conf.ConnectorConfig, bridge *NATSKafkaBridge) (Conn
 type BridgeConnector struct {
 	sync.Mutex
 
-	config conf.ConnectorConfig
-	bridge *NATSKafkaBridge
-	stats  *ConnectorStatsHolder
+	config       conf.ConnectorConfig
+	bridge       *NATSKafkaBridge
+	stats        *ConnectorStatsHolder
+	dialer       *kafka.Dialer
+	balancer     kafka.Balancer
+	writers      *sync.Map
+	destTemplate *template.Template
 }
 
 // Start is a no-op, designed for overriding
@@ -103,30 +111,57 @@ func (conn *BridgeConnector) Stats() ConnectorStats {
 }
 
 // Init sets up common fields for all connectors
-func (conn *BridgeConnector) init(bridge *NATSKafkaBridge, config conf.ConnectorConfig, name string) {
+func (conn *BridgeConnector) init(bridge *NATSKafkaBridge, config conf.ConnectorConfig, destTpl string, name string) {
 	conn.config = config
 	conn.bridge = bridge
+	conn.writers = &sync.Map{}
 
 	id := conn.config.ID
 	if id == "" {
 		id = nuid.Next()
 	}
 	conn.stats = NewConnectorStatsHolder(name, id)
+
+	conn.initKafka()
+	conn.initDestTemplate(destTpl)
+}
+
+// sets up kafka dialer and balancer
+func (conn *BridgeConnector) initKafka() {
+	conn.dialer = &kafka.Dialer{
+		Timeout:   time.Duration(conn.bridge.config.ConnectTimeout) * time.Millisecond,
+		DualStack: true,
+	}
+	tlsC, err := conn.config.TLS.MakeTLSConfig()
+	if err != nil {
+		conn.bridge.Logger().Noticef("TLS config error for %s, %s", conn.String(), err.Error())
+	}
+	if tlsC == nil {
+		conn.bridge.Logger().Noticef("TLS disabled for %s", conn.String())
+	} else {
+		conn.dialer.TLS = tlsC
+	}
+
+	if conn.config.Balancer == conf.LeastBytes {
+		conn.balancer = &kafka.LeastBytes{}
+	} else { // default to hash
+		conn.balancer = &kafka.Hash{}
+	}
 }
 
 // NATSCallback used by conn-nats connectors in an conn library callback
 // The lock will be held by the caller!
-type NATSCallback func(natsMsg []byte) error
+type NATSCallback func(msg kafka.Message) error
 
 // ShutdownCallback is returned when setting up a callback or polling so the connector can shut it down
 type ShutdownCallback func() error
 
-func (conn *BridgeConnector) stanMessageHandler(natsMsg []byte) error {
-	return conn.bridge.Stan().Publish(conn.config.Channel, natsMsg)
+func (conn *BridgeConnector) stanMessageHandler(msg kafka.Message) error {
+	return conn.bridge.Stan().Publish(conn.dest(msg), msg.Value)
 }
 
-func (conn *BridgeConnector) natsMessageHandler(natsMsg []byte) error {
-	return conn.bridge.NATS().Publish(conn.config.Subject, natsMsg)
+func (conn *BridgeConnector) natsMessageHandler(msg kafka.Message) error {
+	return conn.bridge.NATS().Publish(conn.dest(msg), msg.Value)
 }
 
 func (conn *BridgeConnector) calculateKey(subject string, replyto string) []byte {
@@ -183,14 +218,14 @@ func (conn *BridgeConnector) calculateKey(subject string, replyto string) []byte
 }
 
 // set up a nats subscription, assumes the lock is held
-func (conn *BridgeConnector) subscribeToNATS(subject string, natsQueue string, dest *kafka.Writer) (*nats.Subscription, error) {
+func (conn *BridgeConnector) subscribeToNATS(subject string, natsQueue string) (*nats.Subscription, error) {
 	traceEnabled := conn.bridge.Logger().TraceEnabled()
 	callback := func(msg *nats.Msg) {
 		start := time.Now()
 		l := int64(len(msg.Data))
 
 		// send to kafka here
-		err := dest.WriteMessages(context.Background(),
+		err := conn.writer(msg).WriteMessages(context.Background(),
 			kafka.Message{
 				Key:   conn.calculateKey(msg.Subject, msg.Reply),
 				Value: msg.Data,
@@ -220,7 +255,7 @@ func (conn *BridgeConnector) subscribeToNATS(subject string, natsQueue string, d
 
 // subscribeToChannel uses the bridges STAN connection to subscribe based on the config
 // The start position/time and durable name are optional
-func (conn *BridgeConnector) subscribeToChannel(dest *kafka.Writer) (stan.Subscription, error) {
+func (conn *BridgeConnector) subscribeToChannel() (stan.Subscription, error) {
 	if conn.bridge.Stan() == nil {
 		return nil, fmt.Errorf("bridge not configured to use NATS streaming")
 	}
@@ -254,7 +289,7 @@ func (conn *BridgeConnector) subscribeToChannel(dest *kafka.Writer) (stan.Subscr
 		}
 
 		key := conn.calculateKey(conn.config.Channel, conn.config.DurableName)
-		err := dest.WriteMessages(context.Background(),
+		err := conn.writer(msg).WriteMessages(context.Background(),
 			kafka.Message{
 				Key:   key,
 				Value: msg.Data,
@@ -280,40 +315,12 @@ func (conn *BridgeConnector) subscribeToChannel(dest *kafka.Writer) (stan.Subscr
 	return sub, err
 }
 
-func (conn *BridgeConnector) connectWriter() *kafka.Writer {
-	config := conn.config
-
-	dialer := &kafka.Dialer{
-		Timeout:   time.Duration(conn.bridge.config.ConnectTimeout) * time.Millisecond,
-		DualStack: true,
-	}
-
-	tlsC, err := config.TLS.MakeTLSConfig()
-
-	if err != nil {
-		conn.bridge.Logger().Noticef("TLS config error for %s, %s", conn.String(), err.Error())
-		return nil
-	}
-
-	if tlsC == nil {
-		conn.bridge.Logger().Noticef("TLS disabled for %s", conn.String())
-	} else {
-		dialer.TLS = tlsC
-	}
-
-	var balancer kafka.Balancer
-
-	if config.Balancer == conf.LeastBytes {
-		balancer = &kafka.LeastBytes{}
-	} else { // default to hash
-		balancer = &kafka.Hash{}
-	}
-
+func (conn *BridgeConnector) connectWriter(topic string) *kafka.Writer {
 	writer := kafka.NewWriter(kafka.WriterConfig{
 		Brokers:   conn.config.Brokers,
-		Topic:     conn.config.Topic,
-		Balancer:  balancer,
-		Dialer:    dialer,
+		Topic:     topic,
+		Balancer:  conn.balancer,
+		Dialer:    conn.dialer,
 		BatchSize: 1,
 	})
 
@@ -323,30 +330,12 @@ func (conn *BridgeConnector) connectWriter() *kafka.Writer {
 func (conn *BridgeConnector) connectReader() *kafka.Reader {
 	config := conn.config
 
-	dialer := &kafka.Dialer{
-		Timeout:   time.Duration(conn.bridge.config.ConnectTimeout) * time.Millisecond,
-		DualStack: true,
-	}
-
-	tlsC, err := config.TLS.MakeTLSConfig()
-
-	if err != nil {
-		conn.bridge.Logger().Noticef("TLS config error for %s, %s", conn.String(), err.Error())
-		return nil
-	}
-
-	if tlsC == nil {
-		conn.bridge.Logger().Noticef("TLS disabled for %s", conn.String())
-	} else {
-		dialer.TLS = tlsC
-	}
-
 	readerConfig := kafka.ReaderConfig{
 		Brokers:  conn.config.Brokers,
 		Topic:    config.Topic,
 		MinBytes: 1,
 		MaxBytes: 10e6, // 10MB
-		Dialer:   dialer,
+		Dialer:   conn.dialer,
 	}
 
 	if config.MinBytes > 0 {
@@ -378,9 +367,8 @@ func (conn *BridgeConnector) setUpListener(target *kafka.Reader, natsCallbackFun
 
 	listenerCallbackFunc := func(conn *BridgeConnector, msg kafka.Message) {
 		start := time.Now()
-		value := msg.Value
-		l := int64(len(value))
-		err := natsCallbackFunc(value)
+		l := int64(len(msg.Value))
+		err := natsCallbackFunc(msg)
 
 		if err != nil {
 			if traceEnabled {
@@ -444,4 +432,64 @@ func (conn *BridgeConnector) setUpListener(target *kafka.Reader, natsCallbackFun
 		wg.Wait()
 		return nil
 	}, nil
+}
+
+func (conn *BridgeConnector) writer(msg interface{}) *kafka.Writer {
+	t := conn.dest(msg)
+	h := getHash(t)
+	w, ok := conn.writers.Load(h)
+	if !ok {
+		w = conn.connectWriter(t)
+		conn.writers.Store(h, w)
+	}
+	return w.(*kafka.Writer)
+}
+
+func (conn *BridgeConnector) closeWriters() {
+	conn.writers.Range(func(t, w interface{}) bool {
+		w.(*kafka.Writer).Close()
+		conn.writers.Delete(t.(string))
+		return true
+	})
+}
+
+func (conn *BridgeConnector) initDestTemplate(destTpl string) {
+	funcMap := template.FuncMap{
+		"replace": func(old, new, src string) string {
+			return strings.Replace(src, old, new, -1)
+		},
+		"substring": func(start, end int, s string) string {
+			if start < 0 {
+				return s[:end]
+			}
+			if end < 0 || end > len(s) {
+				return s[start:]
+			}
+			return s[start:end]
+		},
+	}
+	var err error
+	conn.destTemplate, err = template.New("dest").Funcs(funcMap).Parse(destTpl)
+	if err != nil {
+		conn.bridge.logger.Fatalf("parsing destination (subject, channel, topic) went wrong: %s", err)
+	}
+}
+
+func (conn *BridgeConnector) dest(msg interface{}) string {
+	var buf bytes.Buffer
+	if err := conn.destTemplate.Execute(&buf, msg); err != nil {
+		return ""
+	}
+	return buf.String()
+}
+
+func getHash(name string) string {
+	digits := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	sha := sha256.New()
+	sha.Write([]byte(name))
+	b := sha.Sum(nil)
+	for i := 0; i < 6; i++ {
+		b[i] = digits[int(b[i]%62)]
+	}
+	return string(b[:6])
 }

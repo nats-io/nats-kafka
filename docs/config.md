@@ -224,3 +224,5 @@ Available key types are:
 If unset, an empty key is assigned during translation from NATS to Kafka. If the regex types are used and they don't match, an empty key is used.
 
 For nats streaming connections channel is treated as the subject and durable name is treated as the reply to, so that reply key type will use the durable name as the key.
+
+Every destination, may it be channel, subject or topic may be set using a go template that gets the message as data. e.g `topic: "{{ .Subject }}"`. Two template functions are available: replace (`"{{ .Subject | replace \"event\" \"message\" }}`) and substring (`"{{ .Subject | substring 0 5 }}"`)

@@ -33,7 +33,7 @@ type Kafka2NATSConnector struct {
 // NewKafka2NATSConnector create a new Kafka to NATS connector
 func NewKafka2NATSConnector(bridge *NATSKafkaBridge, config conf.ConnectorConfig) Connector {
 	connector := &Kafka2NATSConnector{}
-	connector.init(bridge, config, fmt.Sprintf("Kafka:%s to NATS:%s", config.Topic, config.Subject))
+	connector.init(bridge, config, config.Subject, fmt.Sprintf("Kafka:%s to NATS:%s", config.Topic, config.Subject))
 	return connector
 }
 
@@ -67,6 +67,7 @@ func (conn *Kafka2NATSConnector) Start() error {
 func (conn *Kafka2NATSConnector) Shutdown() error {
 	conn.Lock()
 	defer conn.Unlock()
+	conn.closeWriters()
 	conn.stats.AddDisconnect()
 
 	conn.bridge.Logger().Noticef("shutting down connection %s", conn.String())

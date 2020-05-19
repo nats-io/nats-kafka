@@ -34,7 +34,7 @@ type Stan2KafkaConnector struct {
 // NewStan2KafkaConnector create a new stan to kafka
 func NewStan2KafkaConnector(bridge *NATSKafkaBridge, config conf.ConnectorConfig) Connector {
 	connector := &Stan2KafkaConnector{}
-	connector.init(bridge, config, fmt.Sprintf("Stan:%s to Kafka:%s", config.Channel, config.Topic))
+	connector.init(bridge, config, config.Topic, fmt.Sprintf("Stan:%s to Kafka:%s", config.Channel, config.Topic))
 	return connector
 }
 
@@ -49,13 +49,7 @@ func (conn *Stan2KafkaConnector) Start() error {
 
 	conn.bridge.Logger().Tracef("starting connection %s", conn.String())
 
-	conn.writer = conn.connectWriter()
-
-	if conn.writer == nil {
-		return fmt.Errorf("failed to connect to kafka writer for %s", conn.stats.Name())
-	}
-
-	sub, err := conn.subscribeToChannel(conn.writer)
+	sub, err := conn.subscribeToChannel()
 	if err != nil {
 		return err
 	}
@@ -72,6 +66,7 @@ func (conn *Stan2KafkaConnector) Start() error {
 func (conn *Stan2KafkaConnector) Shutdown() error {
 	conn.Lock()
 	defer conn.Unlock()
+	conn.closeWriters()
 	conn.stats.AddDisconnect()
 
 	conn.bridge.Logger().Noticef("shutting down connection %s", conn.String())
@@ -82,16 +77,7 @@ func (conn *Stan2KafkaConnector) Shutdown() error {
 		conn.sub = nil
 	}
 
-	var err error
-
-	writer := conn.writer
-	conn.writer = nil
-
-	if writer != nil {
-		err = writer.Close()
-	}
-
-	return err // ignore the disconnect error
+	return nil
 }
 
 // CheckConnections ensures the nats/stan connection and report an error if it is down
