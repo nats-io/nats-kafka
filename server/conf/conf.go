@@ -79,6 +79,11 @@ type TLSConf struct {
 	Root string
 }
 
+type SASL struct {
+	User     string
+	Password string
+}
+
 // MakeTLSConfig creates a tls.Config from a TLSConf, setting up the key pairs and certs
 func (tlsConf *TLSConf) MakeTLSConfig() (*tls.Config, error) {
 	if tlsConf.Cert == "" || tlsConf.Key == "" {
@@ -116,6 +121,14 @@ func (tlsConf *TLSConf) MakeTLSConfig() (*tls.Config, error) {
 	return &config, nil
 }
 
+// MakeSASLConfig create a tls.Config for a SASL connection
+func (saslConf *SASL) MakeSASLConfig() (*tls.Config, error) {
+	return &tls.Config{
+		InsecureSkipVerify: true,
+		ClientAuth:         tls.NoClientCert,
+	}, nil
+}
+
 // HTTPConfig is used to specify the host/port/tls for an HTTP server
 type HTTPConfig struct {
 	HTTPHost  string
@@ -123,16 +136,16 @@ type HTTPConfig struct {
 	HTTPSPort int
 	TLS       TLSConf
 
-	ReadTimeout  int //milliseconds
-	WriteTimeout int //milliseconds
+	ReadTimeout  int // milliseconds
+	WriteTimeout int // milliseconds
 }
 
 // NATSConfig configuration for a NATS connection
 type NATSConfig struct {
 	Servers []string
 
-	ConnectTimeout int //milliseconds
-	ReconnectWait  int //milliseconds
+	ConnectTimeout int // milliseconds
+	ReconnectWait  int // milliseconds
 	MaxReconnects  int
 
 	TLS             TLSConf
@@ -144,7 +157,7 @@ type NATSStreamingConfig struct {
 	ClusterID string
 	ClientID  string
 
-	PubAckWait         int //milliseconds
+	PubAckWait         int // milliseconds
 	DiscoverPrefix     string
 	MaxPubAcksInflight int
 	ConnectWait        int // milliseconds
@@ -190,6 +203,7 @@ type ConnectorConfig struct {
 	Brokers []string // list of brokers to use for creating a reader/writer
 	Topic   string   // kafka topic
 	TLS     TLSConf  // tls config for connecting to the kafka brokers
+	SASL    SASL     // SASL config for connecting to the kafka brokers, specifically EventHub
 
 	MinBytes  int64  // used by the Kafka reader (for kafka->nats connectors)
 	MaxBytes  int64  // used by the Kafka reader (for kafka->nats connectors)

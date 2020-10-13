@@ -5,6 +5,7 @@ The bridge uses a single configuration file passed on the command line or enviro
 * [Specifying the Configuration File](#specify)
 * [Shared](#root)
 * [TLS](#tls)
+* [SASL](#sasl)
 * [Logging](#logging)
 * [Monitoring](#monitoring)
 * [NATS](#nats)
@@ -52,6 +53,13 @@ NATS, streaming, Kafka and HTTP configurations all take an optional TLS setting.
 * `root` - file path to a CA root certificate store, used for NATS connections
 * `cert` - file path to a server certificate, used for HTTPS monitoring and optionally for client side certificates with NATS
 * `key` - key for the certificate store specified in cert
+
+## SASL <a name="sasl"></a>
+
+Kafka configurations take an optional SASL setting. The SASL configuration takes two possible settings:
+#### NOTE: If configured, then TLS configuration will not be used for Kafka
+* `user` - user to connect to kafka
+* `password` - password to connect to kafka
 
 <a name="logging"></a>
 
@@ -205,6 +213,7 @@ All connectors must specify Kafka connection properties, with a few optional set
 * `brokers` - a string array of broker host:port settings
 * `topic` - the Kafka topic to listen/send to
 * `tls` - A tls config for the connection
+* `sasl` - the Kafka userid and password for connection
 * `balancer` - required for a writer, should be "hash" or "leastbytes"
 * `groupid` - (exclusive with partition) used by the reader to set a group id
 * `partition` - (exclusive with groupid) used by the reader to set a partition

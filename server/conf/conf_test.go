@@ -17,6 +17,7 @@
 package conf
 
 import (
+	"crypto/tls"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -37,4 +38,12 @@ func TestMakeTLSConfig(t *testing.T) {
 	}
 	_, err := tlsC.MakeTLSConfig()
 	require.NoError(t, err)
+}
+
+func TestTLSConf_MakeTLSConfig(t *testing.T) {
+	sasl := SASL{}
+	tlsSasl, _ := sasl.MakeSASLConfig()
+	require.NotNil(t, tlsSasl)
+	require.Equal(t, tlsSasl.ClientAuth, tls.NoClientCert)
+	require.Equal(t, tlsSasl.InsecureSkipVerify, true)
 }

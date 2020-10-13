@@ -19,15 +19,15 @@ package core
 import (
 	"fmt"
 
+	"github.com/nats-io/stan.go"
+
 	"github.com/nats-io/nats-kafka/server/conf"
-	stan "github.com/nats-io/stan.go"
-	"github.com/segmentio/kafka-go"
 )
 
 // Stan2KafkaConnector connects a STAN channel to Kafka
 type Stan2KafkaConnector struct {
 	BridgeConnector
-	writer *kafka.Writer
+	// writer *kafka.Writer
 	sub    stan.Subscription
 }
 
