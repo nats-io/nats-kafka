@@ -32,7 +32,7 @@ import (
 func TestStartWithConfigFileFlag(t *testing.T) {
 	topic := nuid.Next()
 
-	tbs, err := StartTestEnvironmentInfrastructure(false, []string{topic})
+	tbs, err := StartTestEnvironmentInfrastructure(false,false, []string{topic})
 	require.NoError(t, err)
 	defer tbs.Close()
 
@@ -87,7 +87,7 @@ func TestStartWithConfigFileFlag(t *testing.T) {
 func TestStartWithConfigFileEnv(t *testing.T) {
 	topic := nuid.Next()
 
-	tbs, err := StartTestEnvironmentInfrastructure(false, []string{topic})
+	tbs, err := StartTestEnvironmentInfrastructure(false,false, []string{topic})
 	require.NoError(t, err)
 	defer tbs.Close()
 
@@ -145,7 +145,7 @@ func TestStartWithConfigFileEnv(t *testing.T) {
 func TestFailWithoutConfigFile(t *testing.T) {
 	topic := nuid.Next()
 
-	tbs, err := StartTestEnvironmentInfrastructure(false, []string{topic})
+	tbs, err := StartTestEnvironmentInfrastructure(false, false, []string{topic})
 	require.NoError(t, err)
 	defer tbs.Close()
 

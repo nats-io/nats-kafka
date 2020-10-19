@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 The NATS Authors
+ * Copyright 2019-2020 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -18,10 +18,11 @@ package core
 import (
 	"testing"
 
-	"github.com/nats-io/nats-kafka/server/conf"
-	nats "github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nuid"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nats-io/nats-kafka/server/conf"
 )
 
 func TestSimpleSendOnKafkaReceiveOnNATS(t *testing.T) {
@@ -68,6 +69,54 @@ func TestSimpleSendOnKafkaReceiveOnNATS(t *testing.T) {
 	require.True(t, connStats.Connected)
 }
 
+func TestSimpleSASLSendOnKafkaReceiveOnNATS(t *testing.T) {
+	subject := nuid.Next()
+	topic := nuid.Next()
+	msg := "hello world"
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "KafkaToNATS",
+			Subject: subject,
+			Topic:   topic,
+			SASL: conf.SASL{
+				User:     saslUser,
+				Password: saslPassword,
+			},
+		},
+	}
+
+	tbs, err := StartSASLTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	tbs.Bridge.checkConnections()
+
+	done := make(chan string)
+
+	sub, err := tbs.NC.Subscribe(subject, func(msg *nats.Msg) {
+		done <- string(msg.Data)
+	})
+	require.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	err = tbs.SendMessageToKafka(topic, []byte(msg), 5000)
+	require.NoError(t, err)
+
+	received := tbs.WaitForIt(1, done)
+	require.Equal(t, msg, received)
+
+	stats := tbs.Bridge.SafeStats()
+	connStats := stats.Connections[0]
+	require.Equal(t, int64(1), connStats.MessagesIn)
+	require.Equal(t, int64(1), connStats.MessagesOut)
+	require.Equal(t, int64(len([]byte(msg))), connStats.BytesIn)
+	require.Equal(t, int64(len([]byte(msg))), connStats.BytesOut)
+	require.Equal(t, int64(1), connStats.Connects)
+	require.Equal(t, int64(0), connStats.Disconnects)
+	require.True(t, connStats.Connected)
+}
+
 func TestSimpleSendOnKafkaReceiveOnNATSWithGroup(t *testing.T) {
 	subject := nuid.Next()
 	topic := nuid.Next()
@@ -84,6 +133,54 @@ func TestSimpleSendOnKafkaReceiveOnNATSWithGroup(t *testing.T) {
 	}
 
 	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	done := make(chan string)
+
+	sub, err := tbs.NC.Subscribe(subject, func(msg *nats.Msg) {
+		done <- string(msg.Data)
+	})
+	require.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	err = tbs.SendMessageToKafka(topic, []byte(msg), 5000)
+	require.NoError(t, err)
+
+	received := tbs.WaitForIt(1, done)
+	require.Equal(t, msg, received)
+
+	stats := tbs.Bridge.SafeStats()
+	connStats := stats.Connections[0]
+	require.Equal(t, int64(1), connStats.MessagesIn)
+	require.Equal(t, int64(1), connStats.MessagesOut)
+	require.Equal(t, int64(len([]byte(msg))), connStats.BytesIn)
+	require.Equal(t, int64(len([]byte(msg))), connStats.BytesOut)
+	require.Equal(t, int64(1), connStats.Connects)
+	require.Equal(t, int64(0), connStats.Disconnects)
+	require.True(t, connStats.Connected)
+}
+
+func TestSimpleSASLSendOnKafkaReceiveOnNATSWithGroup(t *testing.T) {
+	subject := nuid.Next()
+	topic := nuid.Next()
+	group := nuid.Next()
+	msg := "hello world"
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "KafkaToNATS",
+			Subject: subject,
+			Topic:   topic,
+			GroupID: group,
+			SASL: conf.SASL{
+				User:     saslUser,
+				Password: saslPassword,
+			},
+		},
+	}
+
+	tbs, err := StartSASLTestEnvironment(connect)
 	require.NoError(t, err)
 	defer tbs.Close()
 

@@ -56,11 +56,17 @@ NATS, streaming, Kafka and HTTP configurations all take an optional TLS setting.
 
 ## SASL <a name="sasl"></a>
 
-Kafka configurations take an optional SASL setting. The SASL configuration takes two possible settings:
-#### NOTE: If configured, then TLS configuration will not be used for Kafka
-* `user` - user to connect to kafka
-* `password` - password to connect to kafka
+Kafka allow for SASL_PLAIN connection with user and password.  This also supports a flag to connect to Azure EventHub
 
+For each connector section as needed:
+
+* `insecureskipverify` - (optional) allow for auto-adjustment for TLS handshake default to false (Azure EventHub requires this to be `true`)
+```yaml
+"sasl": {
+  "user": "userid",
+  "password": "password"
+}
+```
 <a name="logging"></a>
 
 ### Logging

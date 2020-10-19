@@ -80,8 +80,9 @@ type TLSConf struct {
 }
 
 type SASL struct {
-	User     string
-	Password string
+	User               string
+	Password           string
+	InsecureSkipVerify bool
 }
 
 // MakeTLSConfig creates a tls.Config from a TLSConf, setting up the key pairs and certs
@@ -119,14 +120,6 @@ func (tlsConf *TLSConf) MakeTLSConfig() (*tls.Config, error) {
 	}
 
 	return &config, nil
-}
-
-// MakeSASLConfig create a tls.Config for a SASL connection
-func (saslConf *SASL) MakeSASLConfig() (*tls.Config, error) {
-	return &tls.Config{
-		InsecureSkipVerify: true,
-		ClientAuth:         tls.NoClientCert,
-	}, nil
 }
 
 // HTTPConfig is used to specify the host/port/tls for an HTTP server

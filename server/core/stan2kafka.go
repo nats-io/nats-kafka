@@ -27,8 +27,7 @@ import (
 // Stan2KafkaConnector connects a STAN channel to Kafka
 type Stan2KafkaConnector struct {
 	BridgeConnector
-	// writer *kafka.Writer
-	sub    stan.Subscription
+	sub stan.Subscription
 }
 
 // NewStan2KafkaConnector create a new stan to kafka

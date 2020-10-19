@@ -144,7 +144,11 @@ func (conn *BridgeConnector) initKafka() {
 			Username: conn.config.SASL.User,
 			Password: conn.config.SASL.Password,
 		}
-		tlsC, err = conn.config.SASL.MakeSASLConfig()
+		if conn.config.SASL.InsecureSkipVerify {
+			tlsC = &tls.Config{
+				InsecureSkipVerify: conn.config.SASL.InsecureSkipVerify,
+			}
+		}
 	}
 	if err != nil {
 		conn.bridge.Logger().Noticef("TLS config error for %s, %s", conn.String(), err.Error())
