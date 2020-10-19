@@ -21,14 +21,12 @@ import (
 
 	"github.com/nats-io/nats-kafka/server/conf"
 	stan "github.com/nats-io/stan.go"
-	"github.com/segmentio/kafka-go"
 )
 
 // Stan2KafkaConnector connects a STAN channel to Kafka
 type Stan2KafkaConnector struct {
 	BridgeConnector
-	writer *kafka.Writer
-	sub    stan.Subscription
+	sub stan.Subscription
 }
 
 // NewStan2KafkaConnector create a new stan to kafka
