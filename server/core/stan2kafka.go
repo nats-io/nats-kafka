@@ -19,8 +19,9 @@ package core
 import (
 	"fmt"
 
+	"github.com/nats-io/stan.go"
+
 	"github.com/nats-io/nats-kafka/server/conf"
-	stan "github.com/nats-io/stan.go"
 )
 
 // Stan2KafkaConnector connects a STAN channel to Kafka

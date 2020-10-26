@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"fmt"
 	"regexp"
 	"strings"
@@ -26,11 +27,12 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/nats-io/nats-kafka/server/conf"
-	nats "github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nuid"
-	stan "github.com/nats-io/stan.go"
+	"github.com/nats-io/stan.go"
 	"github.com/segmentio/kafka-go"
+	"github.com/segmentio/kafka-go/sasl/plain"
+	"github.com/nats-io/nats-kafka/server/conf"
 )
 
 // Connector is the abstraction for all of the bridge connector types
@@ -132,7 +134,21 @@ func (conn *BridgeConnector) initKafka() {
 		Timeout:   time.Duration(conn.bridge.config.ConnectTimeout) * time.Millisecond,
 		DualStack: true,
 	}
-	tlsC, err := conn.config.TLS.MakeTLSConfig()
+	var err error
+	var tlsC *tls.Config
+	if conn.config.SASL.User == "" {
+		tlsC, err = conn.config.TLS.MakeTLSConfig()
+	} else {
+		conn.dialer.SASLMechanism = plain.Mechanism{
+			Username: conn.config.SASL.User,
+			Password: conn.config.SASL.Password,
+		}
+		if conn.config.SASL.InsecureSkipVerify {
+			tlsC = &tls.Config{
+				InsecureSkipVerify: conn.config.SASL.InsecureSkipVerify,
+			}
+		}
+	}
 	if err != nil {
 		conn.bridge.Logger().Noticef("TLS config error for %s, %s", conn.String(), err.Error())
 	}
