@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nats-io/nats-kafka/server/conf"
 	gnatsserver "github.com/nats-io/nats-server/v2/server"
 	gnatsd "github.com/nats-io/nats-server/v2/test"
 	nss "github.com/nats-io/nats-streaming-server/server"
@@ -29,14 +28,18 @@ import (
 	"github.com/nats-io/nuid"
 	"github.com/nats-io/stan.go"
 	"github.com/segmentio/kafka-go"
+	"github.com/segmentio/kafka-go/sasl/plain"
+	"github.com/nats-io/nats-kafka/server/conf"
 )
 
 const (
-	serverCert = "../../resources/certs/server-cert.pem"
-	serverKey  = "../../resources/certs/server-key.pem"
-	clientCert = "../../resources/certs/client-cert.pem"
-	clientKey  = "../../resources/certs/client-key.pem"
-	caFile     = "../../resources/certs/truststore.pem"
+	serverCert   = "../../resources/certs/server-cert.pem"
+	serverKey    = "../../resources/certs/server-key.pem"
+	clientCert   = "../../resources/certs/client-cert.pem"
+	clientKey    = "../../resources/certs/client-key.pem"
+	caFile       = "../../resources/certs/truststore.pem"
+	saslUser     = "admin"
+	saslPassword = "admin-secret"
 )
 
 // TestEnv encapsulate a bridge test environment
@@ -58,6 +61,10 @@ type TestEnv struct {
 	Bridge *NATSKafkaBridge
 
 	useTLS bool
+
+	useSASL  bool
+	user     string
+	password string
 }
 
 func collectTopics(connections []conf.ConnectorConfig) []string {
@@ -79,10 +86,11 @@ func collectTopics(connections []conf.ConnectorConfig) []string {
 // StartTestEnvironment calls StartTestEnvironmentInfrastructure
 // followed by StartBridge
 func StartTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, error) {
-	tbs, err := StartTestEnvironmentInfrastructure(false, collectTopics(connections))
+	tbs, err := StartTestEnvironmentInfrastructure(false, false, collectTopics(connections))
 	if err != nil {
 		return nil, err
 	}
+
 	err = tbs.StartBridge(connections)
 	if err != nil {
 		tbs.Close()
@@ -94,7 +102,7 @@ func StartTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, error) 
 // StartTLSTestEnvironment calls StartTestEnvironmentInfrastructure
 // followed by StartBridge, with TLS enabled
 func StartTLSTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, error) {
-	tbs, err := StartTestEnvironmentInfrastructure(true, collectTopics(connections))
+	tbs, err := StartTestEnvironmentInfrastructure(false, true, collectTopics(connections))
 	if err != nil {
 		return nil, err
 	}
@@ -106,16 +114,40 @@ func StartTLSTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, erro
 	return tbs, err
 }
 
+// StartSASLTestEnvironment calls StartTestEnvironmentInfrastructure
+// followed by StartBridge, with SASL enabled
+func StartSASLTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, error) {
+	tbs, err := StartTestEnvironmentInfrastructure(true, false, collectTopics(connections))
+	if err != nil {
+		return nil, err
+	}
+	tbs.user = saslUser
+	tbs.password = saslPassword
+	err = tbs.StartBridge(connections)
+	if err != nil {
+		tbs.Close()
+		return nil, err
+	}
+	return tbs, err
+}
+
 // StartTestEnvironmentInfrastructure creates the kafka server, Nats and streaming
 // but does not start a bridge, you can use StartBridge to start a bridge afterward
-func StartTestEnvironmentInfrastructure(useTLS bool, topics []string) (*TestEnv, error) {
+func StartTestEnvironmentInfrastructure(useSASL, useTLS bool, topics []string) (*TestEnv, error) {
 	tbs := &TestEnv{}
 	tbs.useTLS = useTLS
+	tbs.useSASL = useSASL
 
 	tbs.KafkaHostPort = "localhost:9092"
 
 	if tbs.useTLS {
 		tbs.KafkaHostPort = "localhost:9093"
+	}
+
+	if tbs.useSASL {
+		tbs.KafkaHostPort = "localhost:9094"
+		tbs.user = saslUser
+		tbs.password = saslPassword
 	}
 
 	err := tbs.CheckKafka(5000)
@@ -190,6 +222,14 @@ func (tbs *TestEnv) StartBridge(connections []conf.ConnectorConfig) error {
 				Key:  clientKey,
 				Root: caFile,
 			}
+		}
+
+		if tbs.useSASL {
+			c.SASL = conf.SASL{
+				User:     saslUser,
+				Password: saslPassword,
+			}
+
 		}
 
 		connections[i] = c
@@ -385,6 +425,13 @@ func (tbs *TestEnv) createDialer(waitMillis int32) (*kafka.Dialer, error) {
 		}
 
 		dialer.TLS = tlsCC
+	}
+
+	if tbs.useSASL {
+		dialer.SASLMechanism = plain.Mechanism{
+			Username: saslUser,
+			Password: saslPassword,
+		}
 	}
 
 	return dialer, nil

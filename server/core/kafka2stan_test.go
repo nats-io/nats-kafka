@@ -18,10 +18,10 @@ package core
 import (
 	"testing"
 
-	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nuid"
 	"github.com/nats-io/stan.go"
 	"github.com/stretchr/testify/require"
+	"github.com/nats-io/nats-kafka/server/conf"
 )
 
 func TestSimpleSendOnKafkaReceiveOnStan(t *testing.T) {
@@ -68,6 +68,54 @@ func TestSimpleSendOnKafkaReceiveOnStan(t *testing.T) {
 	require.True(t, connStats.Connected)
 }
 
+func TestSimpleSASLSendOnKafkaReceiveOnStan(t *testing.T) {
+	channel := "test"
+	topic := nuid.Next()
+	msg := "hello world"
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "KafkaToStan",
+			Channel: channel,
+			Topic:   topic,
+			SASL: conf.SASL{
+				User:     saslUser,
+				Password: saslPassword,
+			},
+		},
+	}
+
+	tbs, err := StartSASLTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	tbs.Bridge.checkConnections()
+
+	done := make(chan string)
+
+	sub, err := tbs.SC.Subscribe(channel, func(msg *stan.Msg) {
+		done <- string(msg.Data)
+	})
+	require.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	err = tbs.SendMessageToKafka(topic, []byte(msg), 5000)
+	require.NoError(t, err)
+
+	received := tbs.WaitForIt(1, done)
+	require.Equal(t, msg, received)
+
+	stats := tbs.Bridge.SafeStats()
+	connStats := stats.Connections[0]
+	require.Equal(t, int64(1), connStats.MessagesIn)
+	require.Equal(t, int64(1), connStats.MessagesOut)
+	require.Equal(t, int64(len([]byte(msg))), connStats.BytesIn)
+	require.Equal(t, int64(len([]byte(msg))), connStats.BytesOut)
+	require.Equal(t, int64(1), connStats.Connects)
+	require.Equal(t, int64(0), connStats.Disconnects)
+	require.True(t, connStats.Connected)
+}
+
 func TestSimpleSendOnKafkaReceiveOnStanWithGroup(t *testing.T) {
 	channel := "test"
 	topic := nuid.Next()
@@ -83,6 +131,53 @@ func TestSimpleSendOnKafkaReceiveOnStanWithGroup(t *testing.T) {
 	}
 
 	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	done := make(chan string)
+
+	sub, err := tbs.SC.Subscribe(channel, func(msg *stan.Msg) {
+		done <- string(msg.Data)
+	})
+	require.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	err = tbs.SendMessageToKafka(topic, []byte(msg), 5000)
+	require.NoError(t, err)
+
+	received := tbs.WaitForIt(1, done)
+	require.Equal(t, msg, received)
+
+	stats := tbs.Bridge.SafeStats()
+	connStats := stats.Connections[0]
+	require.Equal(t, int64(1), connStats.MessagesIn)
+	require.Equal(t, int64(1), connStats.MessagesOut)
+	require.Equal(t, int64(len([]byte(msg))), connStats.BytesIn)
+	require.Equal(t, int64(len([]byte(msg))), connStats.BytesOut)
+	require.Equal(t, int64(1), connStats.Connects)
+	require.Equal(t, int64(0), connStats.Disconnects)
+	require.True(t, connStats.Connected)
+}
+
+func TestSimpleSASLSendOnKafkaReceiveOnStanWithGroup(t *testing.T) {
+	channel := "test"
+	topic := nuid.Next()
+	msg := "hello world"
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "KafkaToStan",
+			Channel: channel,
+			Topic:   topic,
+			GroupID: "group-1",
+			SASL: conf.SASL{
+				User:     saslUser,
+				Password: saslPassword,
+			},
+		},
+	}
+
+	tbs, err := StartSASLTestEnvironment(connect)
 	require.NoError(t, err)
 	defer tbs.Close()
 

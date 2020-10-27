@@ -18,9 +18,9 @@ package core
 import (
 	"testing"
 
-	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nuid"
 	"github.com/stretchr/testify/require"
+	"github.com/nats-io/nats-kafka/server/conf"
 )
 
 func TestSimpleSendOnNatsReceiveOnKafka(t *testing.T) {
@@ -37,6 +37,50 @@ func TestSimpleSendOnNatsReceiveOnKafka(t *testing.T) {
 	}
 
 	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	tbs.Bridge.checkConnections()
+
+	err = tbs.NC.Publish("test", []byte(msg))
+	require.NoError(t, err)
+
+	reader := tbs.CreateReader(topic, 5000)
+	defer reader.Close()
+
+	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	require.NoError(t, err)
+	require.Equal(t, msg, string(data))
+
+	stats := tbs.Bridge.SafeStats()
+	connStats := stats.Connections[0]
+	require.Equal(t, int64(1), connStats.MessagesIn)
+	require.Equal(t, int64(1), connStats.MessagesOut)
+	require.Equal(t, int64(len([]byte(msg))), connStats.BytesIn)
+	require.Equal(t, int64(len([]byte(msg))), connStats.BytesOut)
+	require.Equal(t, int64(1), connStats.Connects)
+	require.Equal(t, int64(0), connStats.Disconnects)
+	require.True(t, connStats.Connected)
+}
+
+func TestSimpleSASLSendOnNatsReceiveOnKafka(t *testing.T) {
+	subject := "test"
+	topic := nuid.Next()
+	msg := "hello world"
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "NATSToKafka",
+			Subject: subject,
+			Topic:   topic,
+			SASL: conf.SASL{
+				User:     saslUser,
+				Password: saslPassword,
+			},
+		},
+	}
+
+	tbs, err := StartSASLTestEnvironment(connect)
 	require.NoError(t, err)
 	defer tbs.Close()
 
@@ -90,6 +134,37 @@ func TestWildcardSendRecieveOnKafka(t *testing.T) {
 	require.Equal(t, msg, string(data))
 }
 
+func TestWildcardSASLSendRecieveOnKafka(t *testing.T) {
+	topic := nuid.Next()
+	msg := "hello world"
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "NATSToKafka",
+			Topic:   topic,
+			Subject: "test.*",
+			SASL: conf.SASL{
+				User:     saslUser,
+				Password: saslPassword,
+			},
+		},
+	}
+
+	tbs, err := StartSASLTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	err = tbs.NC.Publish("test.a", []byte(msg))
+	require.NoError(t, err)
+
+	reader := tbs.CreateReader(topic, 5000)
+	defer reader.Close()
+
+	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	require.NoError(t, err)
+	require.Equal(t, msg, string(data))
+}
+
 func TestSendOnNatsQueueReceiveOnKafka(t *testing.T) {
 	subject := "test"
 	topic := nuid.Next()
@@ -105,6 +180,49 @@ func TestSendOnNatsQueueReceiveOnKafka(t *testing.T) {
 	}
 
 	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	err = tbs.NC.Publish("test", []byte(msg))
+	require.NoError(t, err)
+
+	reader := tbs.CreateReader(topic, 5000)
+	defer reader.Close()
+
+	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	require.NoError(t, err)
+	require.Equal(t, msg, string(data))
+
+	stats := tbs.Bridge.SafeStats()
+	connStats := stats.Connections[0]
+	require.Equal(t, int64(1), connStats.MessagesIn)
+	require.Equal(t, int64(1), connStats.MessagesOut)
+	require.Equal(t, int64(len([]byte(msg))), connStats.BytesIn)
+	require.Equal(t, int64(len([]byte(msg))), connStats.BytesOut)
+	require.Equal(t, int64(1), connStats.Connects)
+	require.Equal(t, int64(0), connStats.Disconnects)
+	require.True(t, connStats.Connected)
+}
+
+func TestSASLSendOnNatsQueueReceiveOnKafka(t *testing.T) {
+	subject := "test"
+	topic := nuid.Next()
+	msg := "hello world"
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:      "NATSToKafka",
+			Subject:   subject,
+			QueueName: "workers",
+			Topic:     topic,
+			SASL: conf.SASL{
+				User:     saslUser,
+				Password: saslPassword,
+			},
+		},
+	}
+
+	tbs, err := StartSASLTestEnvironment(connect)
 	require.NoError(t, err)
 	defer tbs.Close()
 
@@ -188,6 +306,41 @@ func TestFixedKeyFromNATS(t *testing.T) {
 	require.Equal(t, "alpha", string(key))
 }
 
+func TestSASLFixedKeyFromNATS(t *testing.T) {
+	subject := nuid.Next()
+	topic := nuid.Next()
+	msg := "hello world"
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:     "NATSToKafka",
+			Subject:  subject,
+			Topic:    topic,
+			KeyType:  "fixed",
+			KeyValue: "alpha",
+			SASL: conf.SASL{
+				User:     saslUser,
+				Password: saslPassword,
+			},
+		},
+	}
+
+	tbs, err := StartSASLTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	err = tbs.NC.Publish(subject, []byte(msg))
+	require.NoError(t, err)
+
+	reader := tbs.CreateReader(topic, 5000)
+	defer reader.Close()
+
+	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	require.NoError(t, err)
+	require.Equal(t, msg, string(data))
+	require.Equal(t, "alpha", string(key))
+}
+
 func TestSubjectKeyFromNATS(t *testing.T) {
 	subject := nuid.Next()
 	topic := nuid.Next()
@@ -218,6 +371,40 @@ func TestSubjectKeyFromNATS(t *testing.T) {
 	require.Equal(t, subject, string(key))
 }
 
+func TestSASLSubjectKeyFromNATS(t *testing.T) {
+	subject := nuid.Next()
+	topic := nuid.Next()
+	msg := "hello world"
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "NATSToKafka",
+			Subject: subject,
+			Topic:   topic,
+			KeyType: "subject",
+			SASL: conf.SASL{
+				User:     saslUser,
+				Password: saslPassword,
+			},
+		},
+	}
+
+	tbs, err := StartSASLTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	err = tbs.NC.Publish(subject, []byte(msg))
+	require.NoError(t, err)
+
+	reader := tbs.CreateReader(topic, 5000)
+	defer reader.Close()
+
+	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	require.NoError(t, err)
+	require.Equal(t, msg, string(data))
+	require.Equal(t, subject, string(key))
+}
+
 func TestReplyKeyFromNATS(t *testing.T) {
 	subject := nuid.Next()
 	topic := nuid.Next()
@@ -233,6 +420,40 @@ func TestReplyKeyFromNATS(t *testing.T) {
 	}
 
 	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	err = tbs.NC.PublishRequest(subject, "beta", []byte(msg))
+	require.NoError(t, err)
+
+	reader := tbs.CreateReader(topic, 5000)
+	defer reader.Close()
+
+	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	require.NoError(t, err)
+	require.Equal(t, msg, string(data))
+	require.Equal(t, "beta", string(key))
+}
+
+func TestSASLReplyKeyFromNATS(t *testing.T) {
+	subject := nuid.Next()
+	topic := nuid.Next()
+	msg := "hello world"
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "NATSToKafka",
+			Subject: subject,
+			Topic:   topic,
+			KeyType: "reply",
+			SASL: conf.SASL{
+				User:     saslUser,
+				Password: saslPassword,
+			},
+		},
+	}
+
+	tbs, err := StartSASLTestEnvironment(connect)
 	require.NoError(t, err)
 	defer tbs.Close()
 
@@ -279,6 +500,41 @@ func TestSubjectRegexKeyFromNATS(t *testing.T) {
 	require.Equal(t, "alpha", string(key))
 }
 
+func TestSASLSubjectRegexKeyFromNATS(t *testing.T) {
+	subject := nuid.Next()
+	topic := nuid.Next()
+	msg := "hello world"
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:     "NATSToKafka",
+			Subject:  subject + ".*", // need wildcard
+			Topic:    topic,
+			KeyType:  "subjectre",
+			KeyValue: subject + "\\.([^.]+)",
+			SASL: conf.SASL{
+				User:     saslUser,
+				Password: saslPassword,
+			},
+		},
+	}
+
+	tbs, err := StartSASLTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	err = tbs.NC.Publish(subject+".alpha", []byte(msg))
+	require.NoError(t, err)
+
+	reader := tbs.CreateReader(topic, 5000)
+	defer reader.Close()
+
+	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	require.NoError(t, err)
+	require.Equal(t, msg, string(data))
+	require.Equal(t, "alpha", string(key))
+}
+
 func TestReplyRegexKeyFromNATS(t *testing.T) {
 	subject := nuid.Next()
 	topic := nuid.Next()
@@ -295,6 +551,41 @@ func TestReplyRegexKeyFromNATS(t *testing.T) {
 	}
 
 	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	err = tbs.NC.PublishRequest(subject, "beta.gamma", []byte(msg))
+	require.NoError(t, err)
+
+	reader := tbs.CreateReader(topic, 5000)
+	defer reader.Close()
+
+	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	require.NoError(t, err)
+	require.Equal(t, msg, string(data))
+	require.Equal(t, "gamma", string(key))
+}
+
+func TestSASLReplyRegexKeyFromNATS(t *testing.T) {
+	subject := nuid.Next()
+	topic := nuid.Next()
+	msg := "hello world"
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:     "NATSToKafka",
+			Subject:  subject,
+			Topic:    topic,
+			KeyType:  "replyre",
+			KeyValue: "beta\\.([^.]+)",
+			SASL: conf.SASL{
+				User:     saslUser,
+				Password: saslPassword,
+			},
+		},
+	}
+
+	tbs, err := StartSASLTestEnvironment(connect)
 	require.NoError(t, err)
 	defer tbs.Close()
 
