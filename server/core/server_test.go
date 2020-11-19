@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/nats-io/nats-kafka/server/conf"
 	gnatsserver "github.com/nats-io/nats-server/v2/server"
 	gnatsd "github.com/nats-io/nats-server/v2/test"
 	nss "github.com/nats-io/nats-streaming-server/server"
@@ -29,7 +30,6 @@ import (
 	"github.com/nats-io/stan.go"
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/sasl/plain"
-	"github.com/nats-io/nats-kafka/server/conf"
 )
 
 const (

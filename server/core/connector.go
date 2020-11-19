@@ -27,12 +27,12 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nuid"
 	"github.com/nats-io/stan.go"
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/sasl/plain"
-	"github.com/nats-io/nats-kafka/server/conf"
 )
 
 // Connector is the abstraction for all of the bridge connector types
@@ -48,16 +48,30 @@ type Connector interface {
 	Stats() ConnectorStats
 }
 
+func validateStanConfig(config *conf.ConnectorConfig) error {
+	if config.Channel == "" {
+		return fmt.Errorf("STAN channel name not specified for config type %q - ID %q",
+			config.Type, config.ID)
+	}
+	return nil
+}
+
 // CreateConnector builds a connector from the supplied configuration
 func CreateConnector(config conf.ConnectorConfig, bridge *NATSKafkaBridge) (Connector, error) {
 	switch config.Type {
 	case conf.NATSToKafka:
 		return NewNATS2KafkaConnector(bridge, config), nil
 	case conf.STANToKafka:
+		if err := validateStanConfig(&config); err != nil {
+			return nil, err
+		}
 		return NewStan2KafkaConnector(bridge, config), nil
 	case conf.KafkaToNATS:
 		return NewKafka2NATSConnector(bridge, config), nil
 	case conf.KafkaToStan:
+		if err := validateStanConfig(&config); err != nil {
+			return nil, err
+		}
 		return NewKafka2StanConnector(bridge, config), nil
 	default:
 		return nil, fmt.Errorf("unknown connector type %q in configuration", config.Type)
@@ -252,7 +266,7 @@ func (conn *BridgeConnector) subscribeToNATS(subject string, natsQueue string) (
 				conn.bridge.Logger().Tracef("%s wrote message to kafka", conn.String())
 			}
 			conn.stats.AddMessageIn(l)
-			conn.bridge.Logger().Noticef("connector publish failure, %s, %s", conn.String(), err.Error())
+			conn.bridge.Logger().Errorf("connector publish failure, %s, %s", conn.String(), err.Error())
 		} else {
 			conn.stats.AddRequest(l, l, time.Since(start))
 		}
@@ -391,7 +405,7 @@ func (conn *BridgeConnector) setUpListener(target *kafka.Reader, natsCallbackFun
 				conn.bridge.Logger().Tracef("%s received message from kafka", conn.String())
 			}
 			conn.stats.AddMessageIn(l)
-			conn.bridge.Logger().Noticef("publish failure for %s, %s", conn.String(), err.Error())
+			conn.bridge.Logger().Errorf("publish failure for %s, %s", conn.String(), err.Error())
 			return
 		}
 
@@ -400,7 +414,7 @@ func (conn *BridgeConnector) setUpListener(target *kafka.Reader, natsCallbackFun
 
 			if err != nil {
 				conn.stats.AddMessageIn(l)
-				conn.bridge.Logger().Noticef("failed to commit, %s", err.Error())
+				conn.bridge.Logger().Errorf("failed to commit, %s", err.Error())
 				go conn.bridge.ConnectorError(conn, err) // run in a go routine so we can finish this method
 				return
 			}

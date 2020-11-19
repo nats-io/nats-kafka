@@ -12,7 +12,9 @@ The bridge uses a single configuration file passed on the command line or enviro
 * [NATS Streaming](#stan)
 * [Connectors](#connectors)
 
-The configuration file format matches the NATS server and supports file includes of the form:
+The configuration file format matches the NATS server. Details can be found [here](https://docs.nats.io/nats-server/configuration#include-directive).
+
+**IMPORTANT**: Includes *must* use relative paths, and are relative to the main configuration.
 
 ```yaml
 include "./includes/connectors.conf"

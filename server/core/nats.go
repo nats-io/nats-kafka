@@ -127,6 +127,9 @@ func (server *NATSKafkaBridge) connectToSTAN() error {
 
 	server.logger.Noticef("connecting to NATS streaming")
 	config := server.config.STAN
+	if config.DiscoverPrefix == "" {
+		config.DiscoverPrefix = stan.DefaultDiscoverPrefix
+	}
 
 	sc, err := stan.Connect(config.ClusterID, config.ClientID,
 		stan.NatsConn(server.nats),

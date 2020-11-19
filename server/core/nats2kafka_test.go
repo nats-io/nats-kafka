@@ -18,9 +18,9 @@ package core
 import (
 	"testing"
 
+	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nuid"
 	"github.com/stretchr/testify/require"
-	"github.com/nats-io/nats-kafka/server/conf"
 )
 
 func TestSimpleSendOnNatsReceiveOnKafka(t *testing.T) {
