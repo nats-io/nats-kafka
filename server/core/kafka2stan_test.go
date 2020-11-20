@@ -18,11 +18,26 @@ package core
 import (
 	"testing"
 
+	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nuid"
 	"github.com/nats-io/stan.go"
 	"github.com/stretchr/testify/require"
-	"github.com/nats-io/nats-kafka/server/conf"
 )
+
+func TestValidateConfiguration(t *testing.T) {
+	topic := nuid.Next()
+
+	// No channel specified
+	connect := []conf.ConnectorConfig{{Type: "KafkaToStan", ID: "kts", Topic: topic}}
+	_, err := StartTestEnvironment(connect)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "STAN channel name not specified")
+
+	connect = []conf.ConnectorConfig{{Type: "STANToKafka", ID: "stk", Topic: topic}}
+	_, err = StartTestEnvironment(connect)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "STAN channel name not specified")
+}
 
 func TestSimpleSendOnKafkaReceiveOnStan(t *testing.T) {
 	channel := "test"
