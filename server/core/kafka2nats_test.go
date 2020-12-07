@@ -17,6 +17,7 @@ package core
 
 import (
 	"testing"
+	"time"
 
 	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nats.go"
@@ -134,6 +135,11 @@ func TestSimpleSendOnKafkaReceiveOnNATSWithGroup(t *testing.T) {
 	tbs, err := StartTestEnvironment(connect)
 	require.NoError(t, err)
 	defer tbs.Close()
+
+	// This test almost always fails if we don't wait a bit here.
+	// It has probably something to do with some initialization in Kafka,
+	// but I am not sure what. This delay is not bullet proof but at least helps.
+	time.Sleep(time.Second)
 
 	done := make(chan string)
 
