@@ -17,6 +17,7 @@
 package core
 
 import (
+	"os"
 	"strings"
 	"time"
 
@@ -56,7 +57,13 @@ func (server *NATSKafkaBridge) natsReconnected(nc *nats.Conn) {
 func (server *NATSKafkaBridge) natsClosed(nc *nats.Conn) {
 	if server.checkRunning() {
 		server.logger.Errorf("nats connection closed, shutting down bridge")
-		go server.Stop()
+		go func() {
+			// When NATS connection is really marked as closed, the bridge cannot
+			// do anything else, so stop the bridge and exit the process with an
+			// error so that system/docker can restart (if applicable).
+			server.Stop()
+			os.Exit(2)
+		}()
 	}
 }
 
@@ -77,7 +84,8 @@ func (server *NATSKafkaBridge) connectToNATS() error {
 	server.logger.Noticef("connecting to NATS core")
 
 	config := server.config.NATS
-	options := []nats.Option{nats.MaxReconnects(config.MaxReconnects),
+	options := []nats.Option{
+		nats.MaxReconnects(config.MaxReconnects),
 		nats.ReconnectWait(time.Duration(config.ReconnectWait) * time.Millisecond),
 		nats.Timeout(time.Duration(config.ConnectTimeout) * time.Millisecond),
 		nats.ErrorHandler(server.natsError),
@@ -85,6 +93,7 @@ func (server *NATSKafkaBridge) connectToNATS() error {
 		nats.DisconnectHandler(server.natsDisconnected),
 		nats.ReconnectHandler(server.natsReconnected),
 		nats.ClosedHandler(server.natsClosed),
+		nats.NoCallbacksAfterClientClose(),
 	}
 
 	if config.TLS.Root != "" {

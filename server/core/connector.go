@@ -327,7 +327,7 @@ func (conn *BridgeConnector) subscribeToChannel() (stan.Subscription, error) {
 
 		if err != nil {
 			conn.stats.AddMessageIn(l)
-			conn.bridge.Logger().Noticef("connector publish failure, %s, %s", conn.String(), err.Error())
+			conn.bridge.Logger().Errorf("connector publish failure, %s, %s", conn.String(), err.Error())
 		} else {
 			if traceEnabled {
 				conn.bridge.Logger().Tracef("%s wrote message to kafka with key %s", conn.String(), string(key))

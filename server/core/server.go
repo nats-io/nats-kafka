@@ -201,14 +201,16 @@ func (server *NATSKafkaBridge) Stop() {
 		}
 	}
 
-	if server.nats != nil {
-		server.nats.Close()
-		server.logger.Noticef("disconnected from NATS")
-	}
-
+	// Shutdown STAN connection first, since it needs NATS connection to send
+	// the close protocol.
 	if server.stan != nil {
 		server.stan.Close()
 		server.logger.Noticef("disconnected from NATS streaming")
+	}
+
+	if server.nats != nil {
+		server.nats.Close()
+		server.logger.Noticef("disconnected from NATS")
 	}
 
 	err := server.StopMonitoring()
@@ -385,9 +387,11 @@ func (server *NATSKafkaBridge) ensureReconnectTimer() {
 
 		// Wait for nats to be reconnected
 		if !server.CheckNATS() {
-			server.logger.Noticef("nats connection is down, will try reconnecting to streaming and restarting connectors in %d milliseconds", interval)
+			server.logger.Noticef("nats connection is down, will try reconnecting to NATS and restarting connectors in %d milliseconds", interval)
 			server.reconnectTimer = nil
 			server.ensureReconnectTimer()
+			// Until we get a NATS connection, no point in continuing.
+			return
 		}
 
 		// Make sure stan is up, if it should be
@@ -396,9 +400,11 @@ func (server *NATSKafkaBridge) ensureReconnectTimer() {
 			err := server.connectToSTAN() // this may be a no-op if server.stan == nil was true but is not true once we get the lock in the connect
 
 			if err != nil {
-				server.logger.Noticef("error restarting streaming connection, will retry in %d milliseconds", interval, err.Error())
+				server.logger.Noticef("error restarting streaming connection, will retry in %d milliseconds: %v", interval, err.Error())
 				server.reconnectTimer = nil
 				server.ensureReconnectTimer()
+				// Until we get a STAN connection, no point in continuing.
+				return
 			}
 		}
 
