@@ -1,4 +1,3 @@
-
 build: fmt check compile
 
 fmt:
@@ -19,7 +18,7 @@ check:
 update:
 	go get -u honnef.co/go/tools/cmd/staticcheck
 	go get -u github.com/client9/misspell/cmd/misspell
-  
+
 compile:
 	go build ./...
 

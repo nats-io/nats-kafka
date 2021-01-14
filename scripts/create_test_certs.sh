@@ -28,7 +28,8 @@ echo "Generating Kafka SSL certs..."
 cd certs
 # create a new x509 cert, store it in ca-cert and store the key in ca-key
 openssl req -new -x509 -keyout ca-key -out ca-cert -days 730 -passout pass:$PASSWORD \
-   -subj "/C=US/ST=CA/L=LosAngeles/O=None/OU=None/CN=nat.kafka.ssl"
+   -subj "/C=US/ST=CA/L=LosAngeles/O=None/OU=None/CN=nat.kafka.ssl" \
+   -addext "subjectAltName = DNS:nat.kafka.ssl"
 
 ##
 ## Trust Store ##
@@ -49,7 +50,8 @@ openssl pkcs12 -in $TRUSTSTORE_P12 -out $TRUSTSTORE_PEM -nodes -passin pass:$PAS
 
 # Create the server keystore JKS file
 keytool -keystore $SERVER_JKS -alias localhost -validity 730 -genkey -storepass $PASSWORD -keypass $PASSWORD \
-  -dname "CN=localhost, OU=None, O=None, L=LosAngeles, ST=California, C=US" -storetype pkcs12 -keyalg RSA -keysize 2048
+  -dname "CN=localhost, OU=None, O=None, L=LosAngeles, ST=California, C=US" -storetype pkcs12 -keyalg RSA -keysize 2048 \
+  -ext SAN=dns:localhost
 # Add the cert file to the serer keystore
 keytool -keystore $SERVER_JKS -alias localhost -certreq -file server-file -storepass $PASSWORD -noprompt
 # sign the cert and save to server-signed
@@ -76,7 +78,8 @@ sed -ne '/-BEGIN PRIVATE KEY-/,/-END PRIVATE KEY-/p' server.key > server-key.pem
 
 # Create the client keystore JKS file
 keytool -keystore $CLIENT_JKS -alias localhost -validity 730 -genkey -storepass $PASSWORD -keypass $PASSWORD \
-  -dname "CN=nat.kafka.client.ssl, OU=None, O=None, L=LosAngeles, ST=California, C=US" -storetype pkcs12 -keyalg RSA -keysize 2048
+  -dname "CN=nat.kafka.client.ssl, OU=None, O=None, L=LosAngeles, ST=California, C=US" -storetype pkcs12 -keyalg RSA -keysize 2048 \
+  -ext SAN=dns:localhost
 # Add the cert file to the client keystore
 keytool -keystore $CLIENT_JKS -alias localhost -certreq -file client-file -storepass $PASSWORD -noprompt
 # sign the cert and save to cert-signed
