@@ -1,50 +1,67 @@
-build: fmt check compile
+# FIXME: Need to figure out how to generate certs with SANs.
+# https://golang.org/doc/go1.15#commonname
+export GODEBUG=x509ignoreCN=0
 
-fmt:
+goSrc := $(shell find . -name "*.go")
+
+nats-kafka: $(goSrc)
+	go build -o $@
+
+.PHONY: build
+build: nats-kafka
+
+.PHONY: install
+install: nats-kafka
+	mv $< $(shell go env GOPATH)/bin
+
+.PHONY: install-tools
+install-tools:
+	cd $(HOME) && go get honnef.co/go/tools/cmd/staticcheck
+	cd $(HOME) && go get github.com/client9/misspell/cmd/misspell
+	cd $(HOME) && go get golang.org/x/tools/cmd/goimports
+
+.PHONY: lint
+lint:
+	[ -z $$(gofmt -s -l $(goSrc)) ]
+	[ -z $$(goimports -l $(goSrc)) ]
 	misspell -locale US .
-	gofmt -s -w *.go
-	gofmt -s -w server/conf/*.go
-	gofmt -s -w server/core/*.go
-	gofmt -s -w server/logging/*.go
-	goimports -w *.go
-	goimports -w server/conf/*.go
-	goimports -w server/core/*.go
-	goimports -w server/logging/*.go
-
-check:
 	go vet ./...
 	staticcheck ./...
 
-update:
-	go get -u honnef.co/go/tools/cmd/staticcheck
-	go get -u github.com/client9/misspell/cmd/misspell
+.PHONY: test
+test:
+	bash -e -c "trap 'trap - SIGINT ERR EXIT; $(MAKE) teardown-docker-test' SIGINT ERR EXIT; \
+		$(MAKE) setup-docker-test && $(MAKE) run-test"
 
-compile:
-	go build ./...
+.PHONY: test-failfast
+test-failfast:
+	bash -e -c "trap 'trap - SIGINT ERR EXIT; $(MAKE) teardown-docker-test' SIGINT ERR EXIT; \
+		$(MAKE) setup-docker-test && $(MAKE) run-test-failfast"
 
-install: build
-	go install ./...
+.PHONY: test-cover
+test-cover:
+	bash -e -c "trap 'trap - SIGINT ERR EXIT; $(MAKE) teardown-docker-test' SIGINT ERR EXIT; \
+		$(MAKE) setup-docker-test && $(MAKE) run-test-cover"
 
-cover: test
-	go tool cover -html=./coverage.out
-
-test: check
-	rm -rf ./cover.out
-	@echo "Running kafka and zookeeper in docker..."
+.PHONY: setup-docker-test
+setup-docker-test:
 	docker-compose -p nats_kafka_test -f resources/test_servers.yml up -d
-	@echo "Waiting kafka and zookeeper..."
-	-scripts/wait_for_containers.sh
-	@echo "Running tests..."
-	-go test -race -coverpkg=./... -coverprofile=./coverage.out ./...
-	@echo "Cleaning up..."
+	scripts/wait_for_containers.sh
+
+.PHONY: teardown-docker-test
+teardown-docker-test:
 	docker-compose -p nats_kafka_test -f resources/test_servers.yml down
 
-failfast:
-	@echo "Running kafka and zookeeper in docker..."
-	docker-compose -p nats_kafka_test -f resources/test_servers.yml up -d
-	@echo "Waiting kafka and zookeeper..."
-	-scripts/wait_for_containers.sh
-	@echo "Running tests..."
-	-go test --failfast ./...
-	@echo "Cleaning up..."
-	docker-compose -p nats_kafka_test -f resources/test_servers.yml down
+.PHONY: run-test
+run-test:
+	go test -v -timeout 10m -race ./...
+
+.PHONY: run-test-failfast
+run-test-failfast:
+	go test -timeout 5m -failfast ./...
+
+.PHONY: run-test-cover
+run-test-cover:
+	go test -timeout 5m -coverpkg=./... -coverprofile=cover.out ./...
+	go tool cover -html=cover.out
+	rm cover.out

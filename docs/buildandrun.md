@@ -2,7 +2,9 @@
 
 ## Running the server
 
-The server will compile to an executable named `nats-kafka`. A [configuration](config.md) file is required to get any real behavior out of the server.
+The server will compile to an executable named `nats-kafka`. A
+[configuration](config.md) file is required to get any real behavior out of the
+server.
 
 To specify the [configuration](config.md) file, use the `-c` flag:
 
@@ -10,21 +12,27 @@ To specify the [configuration](config.md) file, use the `-c` flag:
 % nats-kafka -c <config file>
 ```
 
-You can use the `-D`, `-V` or `-DV` flags to turn on debug or verbose logging. The `-DV` option will turn on all logging, depending on the config file settings, these settings will override the ones in the config file.
-
-<a name="build"></a>
+You can use the `-D`, `-V` or `-DV` flags to turn on debug or verbose logging.
+The `-DV` option will turn on all logging, depending on the config file
+settings, these settings will override the ones in the config file.
 
 ## Building the Server
 
-This project uses go modules and provides a make file. You should be able to simply:
+This project uses go modules and provides a make file. You should be able to
+simply:
 
 ```bash
 % git clone https://github.com/nats-io/nats-kafka.git
 % cd nats-kafka
-% make
+% make build
 ```
 
-Use `make test` to run the tests, and `make install` to install. The tests depend on docker-compose and two images for running zookeeper and kafka. The nats and nats streaming servers are imported as go modules.
+Targets
+* `make build` - build `nats-kafka`
+* `make install` - build `nats-kafka` and move to your Go bin folder
+* `make test` - setup Docker containers, run Go tests, teardown containers
+* `make test-failfast` - like `make test`, but stop on first failure
+* `make test-cover` - like `make test`, but get coverage report
 
 ## Docker
 
