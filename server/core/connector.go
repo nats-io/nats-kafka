@@ -19,8 +19,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 	"sync"
@@ -28,11 +28,10 @@ import (
 	"time"
 
 	"github.com/nats-io/nats-kafka/server/conf"
+	"github.com/nats-io/nats-kafka/server/kafka"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nuid"
 	"github.com/nats-io/stan.go"
-	"github.com/segmentio/kafka-go"
-	"github.com/segmentio/kafka-go/sasl/plain"
 )
 
 // Connector is the abstraction for all of the bridge connector types
@@ -88,8 +87,6 @@ type BridgeConnector struct {
 	config       conf.ConnectorConfig
 	bridge       *NATSKafkaBridge
 	stats        *ConnectorStatsHolder
-	dialer       *kafka.Dialer
-	balancer     kafka.Balancer
 	writers      *sync.Map
 	destTemplate *template.Template
 }
@@ -138,45 +135,7 @@ func (conn *BridgeConnector) init(bridge *NATSKafkaBridge, config conf.Connector
 	}
 	conn.stats = NewConnectorStatsHolder(name, id)
 
-	conn.initKafka()
 	conn.initDestTemplate(destTpl)
-}
-
-// sets up kafka dialer and balancer
-func (conn *BridgeConnector) initKafka() {
-	conn.dialer = &kafka.Dialer{
-		Timeout:   time.Duration(conn.bridge.config.ConnectTimeout) * time.Millisecond,
-		DualStack: true,
-	}
-	var err error
-	var tlsC *tls.Config
-	if conn.config.SASL.User == "" {
-		tlsC, err = conn.config.TLS.MakeTLSConfig()
-	} else {
-		conn.dialer.SASLMechanism = plain.Mechanism{
-			Username: conn.config.SASL.User,
-			Password: conn.config.SASL.Password,
-		}
-		if conn.config.SASL.InsecureSkipVerify {
-			tlsC = &tls.Config{
-				InsecureSkipVerify: conn.config.SASL.InsecureSkipVerify,
-			}
-		}
-	}
-	if err != nil {
-		conn.bridge.Logger().Noticef("TLS config error for %s, %s", conn.String(), err.Error())
-	}
-	if tlsC == nil {
-		conn.bridge.Logger().Noticef("TLS disabled for %s", conn.String())
-	} else {
-		conn.dialer.TLS = tlsC
-	}
-
-	if conn.config.Balancer == conf.LeastBytes {
-		conn.balancer = &kafka.LeastBytes{}
-	} else { // default to hash
-		conn.balancer = &kafka.Hash{}
-	}
 }
 
 // NATSCallback used by conn-nats connectors in an conn library callback
@@ -255,11 +214,10 @@ func (conn *BridgeConnector) subscribeToNATS(subject string, natsQueue string) (
 		l := int64(len(msg.Data))
 
 		// send to kafka here
-		err := conn.writer(msg).WriteMessages(context.Background(),
-			kafka.Message{
-				Key:   conn.calculateKey(msg.Subject, msg.Reply),
-				Value: msg.Data,
-			})
+		err := conn.writer(msg).Write(kafka.Message{
+			Key:   conn.calculateKey(msg.Subject, msg.Reply),
+			Value: msg.Data,
+		})
 
 		if err != nil {
 			if traceEnabled {
@@ -319,11 +277,10 @@ func (conn *BridgeConnector) subscribeToChannel() (stan.Subscription, error) {
 		}
 
 		key := conn.calculateKey(conn.config.Channel, conn.config.DurableName)
-		err := conn.writer(msg).WriteMessages(context.Background(),
-			kafka.Message{
-				Key:   key,
-				Value: msg.Data,
-			})
+		err := conn.writer(msg).Write(kafka.Message{
+			Key:   key,
+			Value: msg.Data,
+		})
 
 		if err != nil {
 			conn.stats.AddMessageIn(l)
@@ -345,47 +302,7 @@ func (conn *BridgeConnector) subscribeToChannel() (stan.Subscription, error) {
 	return sub, err
 }
 
-func (conn *BridgeConnector) connectWriter(topic string) *kafka.Writer {
-	writer := kafka.NewWriter(kafka.WriterConfig{
-		Brokers:   conn.config.Brokers,
-		Topic:     topic,
-		Balancer:  conn.balancer,
-		Dialer:    conn.dialer,
-		BatchSize: 1,
-	})
-
-	return writer
-}
-
-func (conn *BridgeConnector) connectReader() *kafka.Reader {
-	config := conn.config
-
-	readerConfig := kafka.ReaderConfig{
-		Brokers:  conn.config.Brokers,
-		Topic:    config.Topic,
-		MinBytes: 1,
-		MaxBytes: 10e6, // 10MB
-		Dialer:   conn.dialer,
-	}
-
-	if config.MinBytes > 0 {
-		readerConfig.MinBytes = int(config.MinBytes)
-	}
-
-	if config.MaxBytes > 0 {
-		readerConfig.MaxBytes = int(config.MaxBytes)
-	}
-
-	if config.GroupID != "" {
-		readerConfig.GroupID = config.GroupID
-	} else if config.Partition >= 0 {
-		readerConfig.Partition = int(config.Partition)
-	}
-
-	return kafka.NewReader(readerConfig)
-}
-
-func (conn *BridgeConnector) setUpListener(target *kafka.Reader, natsCallbackFunc NATSCallback) (ShutdownCallback, error) {
+func (conn *BridgeConnector) setUpListener(target kafka.Consumer, natsCallbackFunc NATSCallback) (ShutdownCallback, error) {
 	done := make(chan bool)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -410,7 +327,7 @@ func (conn *BridgeConnector) setUpListener(target *kafka.Reader, natsCallbackFun
 		}
 
 		if conn.config.GroupID != "" {
-			err := target.CommitMessages(ctx, msg)
+			err := target.Commit(ctx, msg)
 
 			if err != nil {
 				conn.stats.AddMessageIn(l)
@@ -431,7 +348,7 @@ func (conn *BridgeConnector) setUpListener(target *kafka.Reader, natsCallbackFun
 
 	go func() {
 		for {
-			msg, err := target.FetchMessage(cancelCtx)
+			msg, err := target.Fetch(cancelCtx)
 
 			if err != nil {
 				if err == cancelCtx.Err() {
@@ -464,20 +381,27 @@ func (conn *BridgeConnector) setUpListener(target *kafka.Reader, natsCallbackFun
 	}, nil
 }
 
-func (conn *BridgeConnector) writer(msg interface{}) *kafka.Writer {
+func (conn *BridgeConnector) writer(msg interface{}) kafka.Producer {
 	t := conn.dest(msg)
 	h := getHash(t)
 	w, ok := conn.writers.Load(h)
 	if !ok {
-		w = conn.connectWriter(t)
+		dialTimeout := time.Duration(conn.bridge.config.ConnectTimeout) * time.Millisecond
+		sp, err := kafka.NewProducer(conn.config, dialTimeout, t)
+		if err != nil {
+			w = kafka.NewErroredProducer(fmt.Errorf("failed to create producer: %w", err))
+		} else {
+			w = sp
+		}
+
 		conn.writers.Store(h, w)
 	}
-	return w.(*kafka.Writer)
+	return w.(kafka.Producer)
 }
 
 func (conn *BridgeConnector) closeWriters() {
 	conn.writers.Range(func(t, w interface{}) bool {
-		w.(*kafka.Writer).Close()
+		w.(io.Closer).Close()
 		conn.writers.Delete(t.(string))
 		return true
 	})

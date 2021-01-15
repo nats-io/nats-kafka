@@ -17,16 +17,17 @@ package core
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/nats-io/nats-kafka/server/conf"
-	"github.com/segmentio/kafka-go"
+	"github.com/nats-io/nats-kafka/server/kafka"
 )
 
 // Kafka2StanConnector connects Kafka topic to a nats streaming channel
 type Kafka2StanConnector struct {
 	BridgeConnector
 
-	reader     *kafka.Reader
+	reader     kafka.Consumer
 	shutdownCB ShutdownCallback
 }
 
@@ -48,7 +49,12 @@ func (conn *Kafka2StanConnector) Start() error {
 
 	conn.bridge.Logger().Tracef("starting connection %s", conn.String())
 
-	conn.reader = conn.connectReader()
+	var err error
+	dialTimeout := time.Duration(conn.bridge.config.ConnectTimeout) * time.Millisecond
+	conn.reader, err = kafka.NewConsumer(conn.config, dialTimeout)
+	if err != nil {
+		return fmt.Errorf("failed to create consumer: %w", err)
+	}
 
 	cb, err := conn.setUpListener(conn.reader, conn.stanMessageHandler)
 	if err != nil {

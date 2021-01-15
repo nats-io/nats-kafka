@@ -24,8 +24,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nats-io/nats-kafka/server/conf"
+	"github.com/nats-io/nats-kafka/server/kafka"
 	"github.com/nats-io/nuid"
-	"github.com/segmentio/kafka-go"
 )
 
 var iterations int
@@ -55,17 +56,14 @@ func main() {
 	for i := 0; i < topics; i++ {
 		topic := nuid.Next()
 		log.Printf("creating topic %s", topic)
-		connection, err := kafka.DialContext(context.Background(), "tcp", kafkaHostPort)
-		if connection == nil || err != nil {
+		connection, err := kafka.NewManager(conf.ConnectorConfig{
+			Brokers: []string{kafkaHostPort},
+		}, 5*time.Second)
+		if err != nil {
 			log.Fatalf("unable to connect to kafka server")
 		}
 
-		connection.SetDeadline(time.Now().Add(15 * time.Second))
-		err = connection.CreateTopics(kafka.TopicConfig{
-			Topic:             topic,
-			NumPartitions:     1,
-			ReplicationFactor: 1,
-		})
+		err = connection.CreateTopic(topic, 1, 1)
 		connection.Close()
 		if err != nil {
 			log.Fatalf("error creating topic, %s", err.Error())
@@ -73,22 +71,23 @@ func main() {
 
 		// start the writer
 		go func(topic string) {
-			writer := kafka.NewWriter(kafka.WriterConfig{
-				Brokers:  []string{kafkaHostPort},
-				Topic:    topic,
-				Balancer: &kafka.LeastBytes{},
-			})
+			writer, err := kafka.NewProducer(conf.ConnectorConfig{
+				Brokers: []string{kafkaHostPort},
+				Topic:   topic,
+			}, 5*time.Second, topic)
+			if err != nil {
+				log.Fatalf("unable to connect to kafka server")
+			}
 
 			log.Printf("sender ready for topic %s", topic)
 			ready.Done()
 			starter.Wait()
 			log.Printf("sending %d messages through %s kafka...", iterations, topic)
 			for i := 0; i < iterations; i++ {
-				err := writer.WriteMessages(context.Background(),
-					kafka.Message{
-						Key:   []byte(topic),
-						Value: msg,
-					})
+				err := writer.Write(kafka.Message{
+					Key:   []byte(topic),
+					Value: msg,
+				})
 				if err != nil {
 					log.Fatalf("error putting messages on topic, %s", err.Error())
 				}
@@ -102,13 +101,16 @@ func main() {
 
 		// start the reader
 		go func(topic string) {
-			reader := kafka.NewReader(kafka.ReaderConfig{
+			reader, err := kafka.NewConsumer(conf.ConnectorConfig{
 				Brokers:  []string{kafkaHostPort},
 				Topic:    topic,
 				GroupID:  topic + ".grp",
 				MinBytes: 100,
 				MaxBytes: 10e6, // 10MB
-			})
+			}, 5*time.Second)
+			if err != nil {
+				log.Fatalf("unable to connect to kafka server")
+			}
 
 			log.Printf("receiver ready for topic %s", topic)
 			ready.Done()
@@ -117,12 +119,12 @@ func main() {
 
 			count := 0
 			for {
-				m, err := reader.FetchMessage(context.Background())
+				m, err := reader.Fetch(context.Background())
 				if err != nil {
 					log.Fatalf("read error on %s, %s", topic, err.Error())
 				}
 
-				err = reader.CommitMessages(context.Background(), m)
+				err = reader.Commit(context.Background(), m)
 				if err != nil {
 					log.Fatalf("commit error on %s, %s", topic, err.Error())
 				}
