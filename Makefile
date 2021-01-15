@@ -54,7 +54,8 @@ teardown-docker-test:
 
 .PHONY: run-test
 run-test:
-	go test -v -timeout 10m -race ./...
+	# Running with -short to avoid flaky tests.
+	go test -v -timeout 5m -short -race ./...
 
 .PHONY: run-test-failfast
 run-test-failfast:
