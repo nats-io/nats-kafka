@@ -24,6 +24,10 @@ import (
 )
 
 func TestSimpleSendOnNatsReceiveOnKafka(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	subject := "test"
 	topic := nuid.Next()
 	msg := "hello world"
