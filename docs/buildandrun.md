@@ -3,8 +3,7 @@
 ## Running the server
 
 The server will compile to an executable named `nats-kafka`. A
-[configuration](config.md) file is required to get any real behavior out of the
-server.
+[configuration](config.md) file is required to start the server.
 
 To specify the [configuration](config.md) file, use the `-c` flag:
 
