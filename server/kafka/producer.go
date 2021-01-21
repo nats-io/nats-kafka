@@ -42,10 +42,10 @@ func IsTopicExist(err error) bool {
 	return terr.Err == sarama.ErrTopicAlreadyExists
 }
 
-func NewProducer(cc conf.ConnectorConfig, dialTimeout time.Duration, topic string) (Producer, error) {
+func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic string) (Producer, error) {
 	sc := sarama.NewConfig()
 	sc.Producer.Return.Successes = true
-	sc.Net.DialTimeout = dialTimeout
+	sc.Net.DialTimeout = time.Duration(bc.ConnectTimeout) * time.Millisecond
 	sc.ClientID = "nats-kafka-producer"
 
 	if cc.SASL.User != "" {

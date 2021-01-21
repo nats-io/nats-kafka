@@ -58,7 +58,9 @@ func main() {
 		log.Printf("creating topic %s", topic)
 		connection, err := kafka.NewManager(conf.ConnectorConfig{
 			Brokers: []string{kafkaHostPort},
-		}, 15*time.Second)
+		}, conf.NATSKafkaBridgeConfig{
+			ConnectTimeout: 15000,
+		})
 		if err != nil {
 			log.Fatalf("unable to connect to kafka server")
 		}
@@ -73,7 +75,9 @@ func main() {
 		go func(topic string) {
 			writer, err := kafka.NewProducer(conf.ConnectorConfig{
 				Brokers: []string{kafkaHostPort},
-			}, 5*time.Second, topic)
+			}, conf.NATSKafkaBridgeConfig{
+				ConnectTimeout: 5000,
+			}, topic)
 			if err != nil {
 				log.Fatalf("error creating producer: %s", err.Error())
 			}

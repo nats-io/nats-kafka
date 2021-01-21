@@ -386,8 +386,7 @@ func (conn *BridgeConnector) writer(msg interface{}) kafka.Producer {
 	h := getHash(t)
 	w, ok := conn.writers.Load(h)
 	if !ok {
-		dialTimeout := time.Duration(conn.bridge.config.ConnectTimeout) * time.Millisecond
-		sp, err := kafka.NewProducer(conn.config, dialTimeout, t)
+		sp, err := kafka.NewProducer(conn.config, conn.bridge.config, t)
 		if err != nil {
 			w = kafka.NewErroredProducer(fmt.Errorf("failed to create producer: %w", err))
 		} else {

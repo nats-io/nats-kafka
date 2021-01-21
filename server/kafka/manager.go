@@ -32,9 +32,9 @@ type saramaManager struct {
 	ca sarama.ClusterAdmin
 }
 
-func NewManager(cc conf.ConnectorConfig, dialTimeout time.Duration) (Manager, error) {
+func NewManager(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig) (Manager, error) {
 	sc := sarama.NewConfig()
-	sc.Net.DialTimeout = dialTimeout
+	sc.Net.DialTimeout = time.Duration(bc.ConnectTimeout) * time.Millisecond
 	sc.ClientID = "nats-kafka-manager"
 
 	if cc.SASL.User != "" {

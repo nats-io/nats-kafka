@@ -431,8 +431,8 @@ func (tbs *TestEnv) SendMessageToKafka(topic string, data []byte, waitMillis int
 		}
 	}
 
-	dialTimeout := time.Duration(waitMillis) * time.Millisecond
-	prod, err := kafka.NewProducer(cc, dialTimeout, topic)
+	bc := conf.NATSKafkaBridgeConfig{ConnectTimeout: int(waitMillis)}
+	prod, err := kafka.NewProducer(cc, bc, topic)
 	if err != nil {
 		return err
 	}
@@ -517,8 +517,8 @@ func (tbs *TestEnv) CreateTopic(topic string, waitMillis int32) error {
 			Root: caFile,
 		}
 	}
-	dialTimeout := time.Duration(waitMillis) * time.Millisecond
-	man, err := kafka.NewManager(cc, dialTimeout)
+	bc := conf.NATSKafkaBridgeConfig{ConnectTimeout: int(waitMillis)}
+	man, err := kafka.NewManager(cc, bc)
 	if err != nil {
 		return err
 	}
@@ -545,8 +545,8 @@ func (tbs *TestEnv) CheckKafka(waitMillis int32) error {
 			Root: caFile,
 		}
 	}
-	dialTimeout := time.Duration(waitMillis) * time.Millisecond
-	man, err := kafka.NewManager(cc, dialTimeout)
+	bc := conf.NATSKafkaBridgeConfig{ConnectTimeout: int(waitMillis)}
+	man, err := kafka.NewManager(cc, bc)
 	if err != nil {
 		return err
 	}
