@@ -32,8 +32,10 @@ import (
 var iterations int
 var topics int
 var kafkaHostPort string
+var connectTimeout int
 
 func main() {
+	flag.IntVar(&connectTimeout, "t", 10000, "connection timeout")
 	flag.IntVar(&iterations, "i", 100, "iterations, defaults to 100")
 	flag.IntVar(&topics, "t", 1, "number of simultaneous topics to use, defaults to 1")
 	flag.StringVar(&kafkaHostPort, "kafka", "localhost:9092", "kafka host:port")
@@ -59,7 +61,7 @@ func main() {
 		connection, err := kafka.NewManager(conf.ConnectorConfig{
 			Brokers: []string{kafkaHostPort},
 		}, conf.NATSKafkaBridgeConfig{
-			ConnectTimeout: 5000,
+			ConnectTimeout: connectTimeout,
 		})
 		if err != nil {
 			log.Fatalf("unable to connect to kafka server")
@@ -77,7 +79,7 @@ func main() {
 				Brokers: []string{kafkaHostPort},
 				Topic:   topic,
 			}, conf.NATSKafkaBridgeConfig{
-				ConnectTimeout: 5000,
+				ConnectTimeout: connectTimeout,
 			}, topic)
 			if err != nil {
 				log.Fatalf("unable to connect to kafka server")
