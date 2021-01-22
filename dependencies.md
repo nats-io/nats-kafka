@@ -42,7 +42,6 @@ This file lists the dependencies used in this repository.
 | github.com/prometheus/client_model v0.0.0-20180712105110-5c3871d89910 | Apache License 2.0 |
 | github.com/prometheus/common v0.0.0-20181126121408-4724e9255275 | Apache License 2.0 |
 | github.com/prometheus/procfs v0.0.2 | Apache License 2.0 |
-| github.com/segmentio/kafka-go v0.2.3-0.20190411192201-218fd49cff39 | MIT |
 | github.com/Shopify/sarama v1.27.2 | MIT |
 | github.com/stretchr/objx v0.1.0 | MIT |
 | github.com/stretchr/testify v1.3.0 | MIT |
