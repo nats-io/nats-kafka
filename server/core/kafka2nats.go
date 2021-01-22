@@ -17,16 +17,17 @@ package core
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/nats-io/nats-kafka/server/conf"
-	"github.com/segmentio/kafka-go"
+	"github.com/nats-io/nats-kafka/server/kafka"
 )
 
 // Kafka2NATSConnector connects Kafka topic to a NATS subject
 type Kafka2NATSConnector struct {
 	BridgeConnector
 
-	reader     *kafka.Reader
+	reader     kafka.Consumer
 	shutdownCB ShutdownCallback
 }
 
@@ -48,7 +49,12 @@ func (conn *Kafka2NATSConnector) Start() error {
 
 	conn.bridge.Logger().Tracef("starting connection %s", conn.String())
 
-	conn.reader = conn.connectReader()
+	dialTimeout := time.Duration(conn.bridge.config.ConnectTimeout) * time.Millisecond
+	r, err := kafka.NewConsumer(conn.config, dialTimeout)
+	if err != nil {
+		return err
+	}
+	conn.reader = r
 
 	cb, err := conn.setUpListener(conn.reader, conn.natsMessageHandler)
 	if err != nil {

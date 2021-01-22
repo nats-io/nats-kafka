@@ -24,10 +24,6 @@ import (
 )
 
 func TestSimpleSendOnNatsReceiveOnKafka(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	subject := "test"
 	topic := nuid.Next()
 	msg := "hello world"
@@ -116,10 +112,6 @@ func TestSimpleSASLSendOnNatsReceiveOnKafka(t *testing.T) {
 }
 
 func TestWildcardSendRecieveOnKafka(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	topic := nuid.Next()
 	msg := "hello world"
 
@@ -147,10 +139,6 @@ func TestWildcardSendRecieveOnKafka(t *testing.T) {
 }
 
 func TestWildcardSASLSendRecieveOnKafka(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	topic := nuid.Next()
 	msg := "hello world"
 
@@ -182,10 +170,6 @@ func TestWildcardSASLSendRecieveOnKafka(t *testing.T) {
 }
 
 func TestSendOnNatsQueueReceiveOnKafka(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	subject := "test"
 	topic := nuid.Next()
 	msg := "hello world"
@@ -272,10 +256,6 @@ func TestSASLSendOnNatsQueueReceiveOnKafka(t *testing.T) {
 }
 
 func TestSimpleSendOnNatsReceiveOnKafkaWithTLS(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	subject := "test"
 	topic := nuid.Next()
 	msg := "hello world"
@@ -296,6 +276,7 @@ func TestSimpleSendOnNatsReceiveOnKafkaWithTLS(t *testing.T) {
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)
+	require.NotNil(t, reader)
 	defer reader.Close()
 
 	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
@@ -304,10 +285,6 @@ func TestSimpleSendOnNatsReceiveOnKafkaWithTLS(t *testing.T) {
 }
 
 func TestFixedKeyFromNATS(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	subject := nuid.Next()
 	topic := nuid.Next()
 	msg := "hello world"
@@ -339,10 +316,6 @@ func TestFixedKeyFromNATS(t *testing.T) {
 }
 
 func TestSASLFixedKeyFromNATS(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	subject := nuid.Next()
 	topic := nuid.Next()
 	msg := "hello world"
@@ -378,10 +351,6 @@ func TestSASLFixedKeyFromNATS(t *testing.T) {
 }
 
 func TestSubjectKeyFromNATS(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	subject := nuid.Next()
 	topic := nuid.Next()
 	msg := "hello world"
@@ -412,10 +381,6 @@ func TestSubjectKeyFromNATS(t *testing.T) {
 }
 
 func TestSASLSubjectKeyFromNATS(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	subject := nuid.Next()
 	topic := nuid.Next()
 	msg := "hello world"
@@ -450,10 +415,6 @@ func TestSASLSubjectKeyFromNATS(t *testing.T) {
 }
 
 func TestReplyKeyFromNATS(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	subject := nuid.Next()
 	topic := nuid.Next()
 	msg := "hello world"
@@ -484,10 +445,6 @@ func TestReplyKeyFromNATS(t *testing.T) {
 }
 
 func TestSASLReplyKeyFromNATS(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	subject := nuid.Next()
 	topic := nuid.Next()
 	msg := "hello world"
@@ -522,10 +479,6 @@ func TestSASLReplyKeyFromNATS(t *testing.T) {
 }
 
 func TestSubjectRegexKeyFromNATS(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	subject := nuid.Next()
 	topic := nuid.Next()
 	msg := "hello world"
@@ -557,10 +510,6 @@ func TestSubjectRegexKeyFromNATS(t *testing.T) {
 }
 
 func TestSASLSubjectRegexKeyFromNATS(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	subject := nuid.Next()
 	topic := nuid.Next()
 	msg := "hello world"
@@ -596,10 +545,6 @@ func TestSASLSubjectRegexKeyFromNATS(t *testing.T) {
 }
 
 func TestReplyRegexKeyFromNATS(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	subject := nuid.Next()
 	topic := nuid.Next()
 	msg := "hello world"
@@ -631,10 +576,6 @@ func TestReplyRegexKeyFromNATS(t *testing.T) {
 }
 
 func TestSASLReplyRegexKeyFromNATS(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-
 	subject := nuid.Next()
 	topic := nuid.Next()
 	msg := "hello world"

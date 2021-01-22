@@ -118,6 +118,10 @@ func TestSimpleSASLSendOnKafkaReceiveOnNATS(t *testing.T) {
 }
 
 func TestSimpleSendOnKafkaReceiveOnNATSWithGroup(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	subject := nuid.Next()
 	topic := nuid.Next()
 	group := nuid.Next()
@@ -167,6 +171,10 @@ func TestSimpleSendOnKafkaReceiveOnNATSWithGroup(t *testing.T) {
 }
 
 func TestSimpleSASLSendOnKafkaReceiveOnNATSWithGroup(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	subject := nuid.Next()
 	topic := nuid.Next()
 	group := nuid.Next()

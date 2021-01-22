@@ -26,6 +26,10 @@ import (
 )
 
 func TestSimpleSendOnStanReceiveOnKafka(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	channel := nuid.Next()
 	topic := nuid.Next()
 	msg := "hello world"
@@ -66,6 +70,10 @@ func TestSimpleSendOnStanReceiveOnKafka(t *testing.T) {
 }
 
 func TestSASLSimpleSendOnStanReceiveOnKafka(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	channel := nuid.Next()
 	topic := nuid.Next()
 	msg := "hello world"

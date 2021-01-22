@@ -19,17 +19,17 @@ package core
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/nats-io/nats-kafka/server/conf"
+	"github.com/nats-io/nats-kafka/server/kafka"
 	gnatsserver "github.com/nats-io/nats-server/v2/server"
 	gnatsd "github.com/nats-io/nats-server/v2/test"
 	nss "github.com/nats-io/nats-streaming-server/server"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nuid"
 	"github.com/nats-io/stan.go"
-	"github.com/segmentio/kafka-go"
-	"github.com/segmentio/kafka-go/sasl/plain"
 )
 
 const (
@@ -160,8 +160,11 @@ func StartTestEnvironmentInfrastructure(useSASL, useTLS bool, topics []string) (
 	for _, t := range topics {
 		err := tbs.CreateTopic(t, 5000)
 		if err != nil {
-			tbs.Close()
-			return nil, err
+			if !kafka.IsTopicExist(err) {
+				tbs.Close()
+				return nil, err
+			}
+			// Otherwise, it's fine.
 		}
 	}
 
@@ -250,6 +253,8 @@ func (tbs *TestEnv) StartBridge(connections []conf.ConnectorConfig) error {
 		return err
 	}
 
+	// Give some time for everything to come up.
+	time.Sleep(1 * time.Second)
 	return nil
 }
 
@@ -406,92 +411,89 @@ func (tbs *TestEnv) Close() {
 	}
 }
 
-func (tbs *TestEnv) createDialer(waitMillis int32) (*kafka.Dialer, error) {
-	dialer := &kafka.Dialer{
-		Timeout:   time.Duration(waitMillis) * time.Millisecond,
-		DualStack: true,
+// SendMessageToKafka puts a message on the kafka topic, bypassing the bridge
+func (tbs *TestEnv) SendMessageToKafka(topic string, data []byte, waitMillis int32) error {
+	cc := conf.ConnectorConfig{
+		Brokers:   []string{tbs.KafkaHostPort},
+		Partition: 0,
 	}
-
+	if tbs.useSASL {
+		cc.SASL = conf.SASL{
+			User:     tbs.user,
+			Password: tbs.password,
+		}
+	}
 	if tbs.useTLS {
-		tlsC := &conf.TLSConf{
+		cc.TLS = conf.TLSConf{
 			Cert: clientCert,
 			Key:  clientKey,
 			Root: caFile,
 		}
-		tlsCC, err := tlsC.MakeTLSConfig()
-
-		if err != nil {
-			return nil, err
-		}
-
-		dialer.TLS = tlsCC
 	}
 
-	if tbs.useSASL {
-		dialer.SASLMechanism = plain.Mechanism{
-			Username: saslUser,
-			Password: saslPassword,
-		}
-	}
-
-	return dialer, nil
-}
-
-// SendMessageToKafka puts a message on the kafka topic, bypassing the bridge
-func (tbs *TestEnv) SendMessageToKafka(topic string, data []byte, waitMillis int32) error {
-	dialer, err := tbs.createDialer(waitMillis)
-
+	bc := conf.NATSKafkaBridgeConfig{ConnectTimeout: int(waitMillis)}
+	prod, err := kafka.NewProducer(cc, bc, topic)
 	if err != nil {
 		return err
 	}
+	defer prod.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(waitMillis)*time.Millisecond)
-	partition := 0
-	conn, err := dialer.DialLeader(ctx, "tcp", tbs.KafkaHostPort, topic, partition)
-	cancel()
-
+	err = prod.Write(kafka.Message{
+		Value: []byte(data),
+	})
 	if err != nil {
 		return err
 	}
-
-	defer conn.Close()
-
-	err = conn.SetWriteDeadline(time.Now().Add(time.Duration(waitMillis) * time.Millisecond))
-
-	if err != nil {
-		return err
-	}
-
-	_, err = conn.WriteMessages(
-		kafka.Message{Value: []byte(data)},
-	)
-
-	return err
+	return nil
 }
 
 // CreateReader creates a new reader
-func (tbs *TestEnv) CreateReader(topic string, waitMillis int32) *kafka.Reader {
-	dialer, err := tbs.createDialer(waitMillis)
-
-	if err != nil {
-		return nil
+func (tbs *TestEnv) CreateReader(topic string, waitMillis int32) kafka.Consumer {
+	cc := conf.ConnectorConfig{
+		Brokers: []string{tbs.KafkaHostPort},
+		Topic:   topic,
+		SASL: conf.SASL{
+			User:     tbs.user,
+			Password: tbs.password,
+		},
+	}
+	if tbs.useSASL {
+		cc.SASL = conf.SASL{
+			User:     tbs.user,
+			Password: tbs.password,
+		}
+	}
+	if tbs.useTLS {
+		cc.TLS = conf.TLSConf{
+			Cert: clientCert,
+			Key:  clientKey,
+			Root: caFile,
+		}
 	}
 
-	return kafka.NewReader(kafka.ReaderConfig{
-		Brokers:  []string{tbs.KafkaHostPort},
-		Topic:    topic,
-		GroupID:  "kbt-" + topic,
-		MinBytes: 1,
-		MaxBytes: 10e3, // 10KB
-		Dialer:   dialer,
-	})
+	dialTimeout := time.Duration(waitMillis) * time.Millisecond
+	cons, err := kafka.NewConsumer(cc, dialTimeout)
+	if err != nil {
+		log.Println("failed to create consumer:", err)
+		return nil
+	}
+	return cons
 }
 
 // GetMessageFromKafka uses an extra connection to talk to kafka, bypassing the bridge
-func (tbs *TestEnv) GetMessageFromKafka(reader *kafka.Reader, waitMillis int32) ([]byte, []byte, error) {
+func (tbs *TestEnv) GetMessageFromKafka(reader kafka.Consumer, waitMillis int32) ([]byte, []byte, error) {
 	context, cancel := context.WithTimeout(context.Background(), time.Duration(waitMillis)*time.Millisecond)
-	m, err := reader.ReadMessage(context)
-	cancel()
+	defer cancel()
+
+	m, err := reader.Fetch(context)
+	if err != nil {
+		return nil, nil, err
+	}
+	if reader.GroupMode() {
+		if err := reader.Commit(context, m); err != nil {
+			return nil, nil, err
+		}
+	}
 
 	if err != nil || m.Value == nil {
 		return nil, nil, err
@@ -501,51 +503,54 @@ func (tbs *TestEnv) GetMessageFromKafka(reader *kafka.Reader, waitMillis int32) 
 }
 
 func (tbs *TestEnv) CreateTopic(topic string, waitMillis int32) error {
-	dialer, err := tbs.createDialer(waitMillis)
-
+	cc := conf.ConnectorConfig{
+		Brokers: []string{tbs.KafkaHostPort},
+	}
+	if tbs.useSASL {
+		cc.SASL.User = tbs.user
+		cc.SASL.Password = tbs.password
+	}
+	if tbs.useTLS {
+		cc.TLS = conf.TLSConf{
+			Cert: clientCert,
+			Key:  clientKey,
+			Root: caFile,
+		}
+	}
+	bc := conf.NATSKafkaBridgeConfig{ConnectTimeout: int(waitMillis)}
+	man, err := kafka.NewManager(cc, bc)
 	if err != nil {
 		return err
 	}
+	defer man.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(waitMillis)*time.Millisecond)
-	connection, err := dialer.DialContext(ctx, "tcp", tbs.KafkaHostPort)
-	cancel() // clean up the context
-
-	if connection == nil || err != nil {
-		return fmt.Errorf("unable to connect to kafka server")
+	if err := man.CreateTopic(topic, 1, 1); err != nil {
+		return err
 	}
-
-	connection.SetDeadline(time.Now().Add(15 * time.Second))
-	err = connection.CreateTopics(kafka.TopicConfig{
-		Topic:             topic,
-		NumPartitions:     1,
-		ReplicationFactor: 1,
-	})
-	connection.Close() // ignore the error
-
-	return err
+	return man.Close()
 }
 
 func (tbs *TestEnv) CheckKafka(waitMillis int32) error {
-	dialer, err := tbs.createDialer(waitMillis)
-
+	cc := conf.ConnectorConfig{
+		Brokers: []string{tbs.KafkaHostPort},
+	}
+	if tbs.useSASL {
+		cc.SASL.User = tbs.user
+		cc.SASL.Password = tbs.password
+	}
+	if tbs.useTLS {
+		cc.TLS = conf.TLSConf{
+			Cert: clientCert,
+			Key:  clientKey,
+			Root: caFile,
+		}
+	}
+	bc := conf.NATSKafkaBridgeConfig{ConnectTimeout: int(waitMillis)}
+	man, err := kafka.NewManager(cc, bc)
 	if err != nil {
 		return err
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(waitMillis)*time.Millisecond)
-	connection, err := dialer.DialContext(ctx, "tcp", tbs.KafkaHostPort)
-	cancel() // clean up the context
-
-	if connection == nil || err != nil {
-		return fmt.Errorf("unable to connect to kafka server, %s", err.Error())
-	}
-
-	_, err = connection.Controller()
-
-	connection.Close() // ignore the error
-
-	return err
+	return man.Close()
 }
 
 func (tbs *TestEnv) WaitForIt(requestCount int64, done chan string) string {
