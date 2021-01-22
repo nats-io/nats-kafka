@@ -35,6 +35,7 @@ var chunk int
 var kafkaHostPort string
 var natsURL string
 var connectTimeout int
+var maxReconnects int
 
 func startBridge(connections []conf.ConnectorConfig) (*core.NATSKafkaBridge, error) {
 	config := conf.DefaultBridgeConfig()
@@ -48,7 +49,7 @@ func startBridge(connections []conf.ConnectorConfig) (*core.NATSKafkaBridge, err
 		Servers:        []string{natsURL},
 		ConnectTimeout: connectTimeout,
 		ReconnectWait:  2000,
-		MaxReconnects:  5,
+		MaxReconnects:  maxReconnects,
 	}
 
 	for i, c := range connections {
@@ -74,6 +75,7 @@ func startBridge(connections []conf.ConnectorConfig) (*core.NATSKafkaBridge, err
 
 func main() {
 	flag.IntVar(&connectTimeout, "t", 10000, "connection timeout")
+	flag.IntVar(&maxReconnects, "r", 10, "max reconnects")
 	flag.IntVar(&iterations, "i", 100, "iterations, defaults to 100")
 	flag.IntVar(&chunk, "c", 1, "messages per write, chunk size, defaults to 1")
 	flag.StringVar(&kafkaHostPort, "kafka", "localhost:9092", "kafka host:port, defaults to localhost:9092")
