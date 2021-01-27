@@ -17,6 +17,7 @@
 package kafka
 
 import (
+	"crypto/tls"
 	"errors"
 	"time"
 
@@ -50,8 +51,17 @@ func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic s
 
 	if cc.SASL.User != "" {
 		sc.Net.SASL.Enable = true
+		sc.Net.SASL.Handshake = true
+		sc.Net.SASL.Mechanism = sarama.SASLTypePlaintext
 		sc.Net.SASL.User = cc.SASL.User
 		sc.Net.SASL.Password = cc.SASL.Password
+
+		if cc.SASL.InsecureSkipVerify {
+			sc.Net.TLS.Enable = true
+			sc.Net.TLS.Config = &tls.Config{
+				InsecureSkipVerify: cc.SASL.InsecureSkipVerify,
+			}
+		}
 	} else if tlsC, err := cc.TLS.MakeTLSConfig(); err == nil {
 		sc.Net.TLS.Enable = (tlsC != nil)
 		sc.Net.TLS.Config = tlsC
