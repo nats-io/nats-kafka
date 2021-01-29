@@ -22,23 +22,28 @@ This project implements a multi-connector bridge between NATS or NATS streaming 
 
 ## Overview
 
-The bridge runs as a single process with a configured set of connectors mapping a Kafka topic to a NATS subject or a NATS streaming channel. Connectors can also map the opposite direction from NATS to Kafka. Each connector is a one-way bridge.
+The bridge runs as a single process with a configured set of connectors mapping
+a Kafka topic to a NATS subject or a NATS streaming channel. Connectors can
+also map the opposite direction from NATS to Kafka. Each connector is a one-way
+bridge.
 
-Connectors share a NATS connection and an optional connection to the NATS streaming server. **Connectors each create a connection to Kafka, subject to TCP connection sharing in the underlying library**
+Connectors share a NATS connection and an optional connection to the NATS
+streaming server. **Connectors each create a connection to Kafka, subject to
+TCP connection sharing in the underlying library**
 
 Message values in Kafka are mapped to message bodies in NATS.
 
-Messages coming from NATS to Kafka can have their key set in a variety of ways, see [Configuration](docs/config.md). Messages coming from Kafka will have their key ignored.
+Messages coming from NATS to Kafka can have their key set in a variety of ways,
+see [Configuration](docs/config.md). Messages coming from Kafka will have their
+key ignored.
 
 Request-reply is not supported.
 
-The bridge is [configured with a NATS server-like format](docs/config.md), in a single file and uses the NATS logger.
+The bridge is [configured with a NATS server-like format](docs/config.md), in a
+single file and uses the NATS logger.
 
-An [optional HTTP/HTTPS endpoint](docs/monitoring.md) can be used for monitoring.
-
-## Todo
-
-* Integrate with travis and coveralls
+An [optional HTTP/HTTPS endpoint](docs/monitoring.md) can be used for
+monitoring.
 
 ## Documentation
 
@@ -66,4 +71,5 @@ An [optional HTTP/HTTPS endpoint](docs/monitoring.md) can be used for monitoring
 
 ## License
 
-Unless otherwise noted, the nats-kafka bridge source files are distributed under the Apache Version 2.0 license found in the LICENSE file.
+Unless otherwise noted, the nats-kafka bridge source files are distributed
+under the Apache Version 2.0 license found in the LICENSE file.
