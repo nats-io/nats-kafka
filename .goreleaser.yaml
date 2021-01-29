@@ -1,0 +1,71 @@
+project_name: nats-kafka
+
+release:
+  github:
+    owner: nats-io
+    name: nats-kafka
+  name_template: "Release {{.Tag}}"
+  draft: true
+
+changelog:
+  skip: true
+
+builds:
+  - main: .
+    id: nats-kafka
+    binary: nats-kafka
+    env:
+      - GO111MODULE=on
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+      - freebsd
+    goarch:
+      - amd64
+      - arm
+      - arm64
+      - 386
+    goarm:
+      - 6
+      - 7
+    ignore:
+      - goos: darwin
+        goarch: 386
+      - goos: freebsd
+        goarch: arm
+      - goos: freebsd
+        goarch: arm64
+      - goos: freebsd
+        goarch: 386
+
+archives:
+  - name_template: '{{.ProjectName}}-{{.Tag}}-{{.Os}}-{{.Arch}}{{if .Arm}}{{.Arm}}{{end}}'
+    id: targz-archives
+    wrap_in_directory: true
+    format: tar.gz
+    files:
+      - README.md
+      - LICENSE
+  - name_template: '{{.ProjectName}}-{{.Tag}}-{{.Os}}-{{.Arch}}{{if .Arm}}{{.Arm}}{{end}}'
+    wrap_in_directory: true
+    format: zip
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "SHA256SUMS"
+  algorithm: sha256
+
+nfpms:
+  - file_name_template: '{{.ProjectName}}-{{.Tag}}-{{.Os}}-{{.Arch}}{{if .Arm}}{{.Arm}}{{end}}'
+    homepage:  https://nats.io
+    description: NATS Utility
+    maintainer: Jaime Piña <jaime@synadia.com>
+    license: Apache 2.0
+    vendor: Synadia Inc.
+    formats:
+      - deb
+      - rpm
