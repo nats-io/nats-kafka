@@ -66,3 +66,16 @@ run-test-cover:
 	go test -count=1 -timeout 5m -coverpkg=./... -coverprofile=cover.out ./...
 	go tool cover -html=cover.out
 	rm cover.out
+
+nats-kafka.docker: $(goSrc)
+	CGO_ENABLED=0 go build -o $@ \
+		-tags timetzdata
+
+.PHONY: docker
+docker: Dockerfile
+ifneq ($(dtag),)
+	docker build --tag natsio/nats-kafka:$(dtag) .
+else
+	# Missing dtag, try again. Example: make docker dtag=1.2.3
+	exit 1
+endif

@@ -38,17 +38,17 @@ Targets
 You can build the docker image using:
 
 ```bash
-% docker build . -t "nats-io/nats-kafka:0.5"
+% make docker dtag=0.5
 ```
 
 Then run it with:
 
 ```bash
-% docker run -v <path to config>:/conf/kafkabridge.conf "nats-io/nats-kafka:0.5" -c /conf/kafkabridge.conf
+% docker run -v <path to config>:/conf/kafkabridge.conf "natsio/nats-kafka:0.2.0" -c /conf/kafkabridge.conf
 ```
 
 Be sure to include your monitoring port, for example, if port 9090 is used for monitoring, you can run with:
 
 ```bash
-% docker run -v <path to config>:/conf/kafkabridge.conf -p 9090:9090 "nats-io/nats-kafka:0.5" -c /conf/kafkabridge.conf
+% docker run -v <path to config>:/conf/kafkabridge.conf -p 9090:9090 "natsio/nats-kafka:0.2.0" -c /conf/kafkabridge.conf
 ```
