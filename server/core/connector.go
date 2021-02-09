@@ -392,6 +392,9 @@ func (conn *BridgeConnector) writer(msg interface{}) kafka.Producer {
 		} else {
 			w = sp
 		}
+		if s, ok := w.(interface{ NetInfo() string }); ok {
+			conn.bridge.Logger().Noticef(s.NetInfo())
+		}
 
 		conn.writers.Store(h, w)
 	}

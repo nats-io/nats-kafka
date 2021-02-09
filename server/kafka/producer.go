@@ -19,6 +19,7 @@ package kafka
 import (
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -33,6 +34,10 @@ type Producer interface {
 type saramaProducer struct {
 	sp    sarama.SyncProducer
 	topic string
+
+	saslOn        bool
+	tlsOn         bool
+	tlsSkipVerify bool
 }
 
 func IsTopicExist(err error) bool {
@@ -71,7 +76,30 @@ func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic s
 		return nil, err
 	}
 
-	return &saramaProducer{sp: sp, topic: topic}, nil
+	return &saramaProducer{
+		sp:            sp,
+		topic:         topic,
+		saslOn:        sc.Net.SASL.Enable,
+		tlsOn:         sc.Net.TLS.Enable,
+		tlsSkipVerify: cc.SASL.InsecureSkipVerify,
+	}, nil
+}
+
+func (p *saramaProducer) NetInfo() string {
+	saslInfo := "SASL disabled"
+	if p.saslOn {
+		saslInfo = "SASL enabled"
+	}
+
+	tlsInfo := "TLS disabled"
+	if p.tlsOn {
+		tlsInfo = "TLS enabled"
+	}
+	if p.tlsSkipVerify {
+		tlsInfo += " (insecure skip verify)"
+	}
+
+	return fmt.Sprintf("%s, %s", saslInfo, tlsInfo)
 }
 
 func (p *saramaProducer) Write(m Message) error {

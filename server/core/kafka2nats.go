@@ -55,6 +55,9 @@ func (conn *Kafka2NATSConnector) Start() error {
 		return err
 	}
 	conn.reader = r
+	if s, ok := conn.reader.(interface{ NetInfo() string }); ok {
+		conn.bridge.Logger().Noticef(s.NetInfo())
+	}
 
 	cb, err := conn.setUpListener(conn.reader, conn.natsMessageHandler)
 	if err != nil {

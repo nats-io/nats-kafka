@@ -46,6 +46,10 @@ type saramaConsumer struct {
 	groupMode bool
 	topic     string
 
+	saslOn        bool
+	tlsOn         bool
+	tlsSkipVerify bool
+
 	c  sarama.Consumer
 	pc sarama.PartitionConsumer
 
@@ -85,8 +89,11 @@ func NewConsumer(cc conf.ConnectorConfig, dialTimeout time.Duration) (Consumer, 
 	}
 
 	cons := &saramaConsumer{
-		groupMode: cc.GroupID != "",
-		topic:     cc.Topic,
+		groupMode:     cc.GroupID != "",
+		topic:         cc.Topic,
+		saslOn:        sc.Net.SASL.Enable,
+		tlsOn:         sc.Net.TLS.Enable,
+		tlsSkipVerify: cc.SASL.InsecureSkipVerify,
 
 		fetchCh:      make(chan *sarama.ConsumerMessage),
 		commitCh:     make(chan *sarama.ConsumerMessage),
@@ -124,6 +131,23 @@ func NewConsumer(cc conf.ConnectorConfig, dialTimeout time.Duration) (Consumer, 
 	}
 
 	return cons, nil
+}
+
+func (c *saramaConsumer) NetInfo() string {
+	saslInfo := "SASL disabled"
+	if c.saslOn {
+		saslInfo = "SASL enabled"
+	}
+
+	tlsInfo := "TLS disabled"
+	if c.tlsOn {
+		tlsInfo = "TLS enabled"
+	}
+	if c.tlsSkipVerify {
+		tlsInfo += " (insecure skip verify)"
+	}
+
+	return fmt.Sprintf("%s, %s", saslInfo, tlsInfo)
 }
 
 func (c *saramaConsumer) Fetch(ctx context.Context) (Message, error) {
