@@ -19,6 +19,7 @@ package kafka
 import (
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -33,6 +34,10 @@ type Producer interface {
 type saramaProducer struct {
 	sp    sarama.SyncProducer
 	topic string
+
+	saslOn        bool
+	tlsOn         bool
+	tlsSkipVerify bool
 }
 
 func IsTopicExist(err error) bool {
@@ -55,15 +60,14 @@ func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic s
 		sc.Net.SASL.Mechanism = sarama.SASLTypePlaintext
 		sc.Net.SASL.User = cc.SASL.User
 		sc.Net.SASL.Password = cc.SASL.Password
-
-		if cc.SASL.InsecureSkipVerify {
-			sc.Net.TLS.Enable = true
-			sc.Net.TLS.Config = &tls.Config{
-				InsecureSkipVerify: cc.SASL.InsecureSkipVerify,
-			}
+	}
+	if sc.Net.SASL.Enable && cc.SASL.InsecureSkipVerify {
+		sc.Net.TLS.Enable = true
+		sc.Net.TLS.Config = &tls.Config{
+			InsecureSkipVerify: cc.SASL.InsecureSkipVerify,
 		}
-	} else if tlsC, err := cc.TLS.MakeTLSConfig(); err == nil {
-		sc.Net.TLS.Enable = (tlsC != nil)
+	} else if tlsC, err := cc.TLS.MakeTLSConfig(); tlsC != nil && err == nil {
+		sc.Net.TLS.Enable = true
 		sc.Net.TLS.Config = tlsC
 	}
 
@@ -72,7 +76,30 @@ func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic s
 		return nil, err
 	}
 
-	return &saramaProducer{sp: sp, topic: topic}, nil
+	return &saramaProducer{
+		sp:            sp,
+		topic:         topic,
+		saslOn:        sc.Net.SASL.Enable,
+		tlsOn:         sc.Net.TLS.Enable,
+		tlsSkipVerify: cc.SASL.InsecureSkipVerify,
+	}, nil
+}
+
+func (p *saramaProducer) NetInfo() string {
+	saslInfo := "SASL disabled"
+	if p.saslOn {
+		saslInfo = "SASL enabled"
+	}
+
+	tlsInfo := "TLS disabled"
+	if p.tlsOn {
+		tlsInfo = "TLS enabled"
+	}
+	if p.tlsSkipVerify {
+		tlsInfo += " (insecure skip verify)"
+	}
+
+	return fmt.Sprintf("%s, %s", saslInfo, tlsInfo)
 }
 
 func (p *saramaProducer) Write(m Message) error {

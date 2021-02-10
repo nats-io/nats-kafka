@@ -55,6 +55,9 @@ func (conn *Kafka2StanConnector) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to create consumer: %w", err)
 	}
+	if s, ok := conn.reader.(interface{ NetInfo() string }); ok {
+		conn.bridge.Logger().Noticef(s.NetInfo())
+	}
 
 	cb, err := conn.setUpListener(conn.reader, conn.stanMessageHandler)
 	if err != nil {
