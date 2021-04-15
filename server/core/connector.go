@@ -207,7 +207,7 @@ func (conn *BridgeConnector) calculateKey(subject string, replyto string) []byte
 }
 
 // set up a nats subscription, assumes the lock is held
-func (conn *BridgeConnector) subscribeToNATS(subject string, natsQueue string) (*nats.Subscription, error) {
+func (conn *BridgeConnector) subscribeToNATS(subject string, queueName string) (*nats.Subscription, error) {
 	traceEnabled := conn.bridge.Logger().TraceEnabled()
 	callback := func(msg *nats.Msg) {
 		start := time.Now()
@@ -234,11 +234,11 @@ func (conn *BridgeConnector) subscribeToNATS(subject string, natsQueue string) (
 		return nil, fmt.Errorf("bridge not configured to use NATS streaming")
 	}
 
-	if natsQueue == "" {
+	if queueName == "" {
 		return conn.bridge.NATS().Subscribe(subject, callback)
 	}
 
-	return conn.bridge.NATS().QueueSubscribe(subject, natsQueue, callback)
+	return conn.bridge.NATS().QueueSubscribe(subject, queueName, callback)
 }
 
 // subscribeToChannel uses the bridges STAN connection to subscribe based on the config
