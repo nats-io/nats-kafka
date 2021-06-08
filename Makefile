@@ -79,3 +79,8 @@ else
 	# Missing dtag, try again. Example: make docker dtag=1.2.3
 	exit 1
 endif
+
+.PHONY: clean
+clean:
+	rm -f nats-kafka
+	go clean --modcache
