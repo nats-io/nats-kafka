@@ -73,82 +73,8 @@ func main() {
 			log.Fatalf("error creating topic, %s", err.Error())
 		}
 
-		// start the writer
-		go func(topic string) {
-			writer, err := kafka.NewProducer(conf.ConnectorConfig{
-				Brokers: []string{kafkaHostPort},
-			}, conf.NATSKafkaBridgeConfig{
-				ConnectTimeout: connectTimeout,
-			}, topic)
-			if err != nil {
-				log.Fatalf("error creating producer: %s", err.Error())
-			}
-
-			chunk := 10
-			log.Printf("sending %d messages through %s kafka in chunks of %d...", iterations, topic, chunk)
-			for i := 0; i < iterations/chunk; i++ {
-				for j := 0; j < chunk; j++ {
-					err := writer.Write(kafka.Message{
-						Key:   []byte(topic),
-						Value: msg,
-					})
-					if err != nil {
-						log.Fatalf("error putting messages on topic, %s", err.Error())
-					}
-				}
-				if (i*chunk)%interval == 0 {
-					log.Printf("%s: send count = %d", topic, (i+1)*chunk)
-				}
-			}
-
-			writer.Close()
-			ready.Done()
-			log.Printf("sender ready for topic %s", topic)
-		}(topic)
-
-		// start the reader
-		go func(topic string) {
-			reader, err := kafka.NewConsumer(conf.ConnectorConfig{
-				Brokers:  []string{kafkaHostPort},
-				Topic:    topic,
-				GroupID:  topic + ".grp",
-				MinBytes: 100,
-				MaxBytes: 10e6, // 10MB
-			}, 5*time.Second)
-			if err != nil {
-				log.Fatalf("error creating consumer: %s", err.Error())
-			}
-
-			log.Printf("receiver ready for topic %s", topic)
-			ready.Done()
-			starter.Wait()
-			log.Printf("reading %d messages from %s kafka...", iterations, topic)
-
-			count := 0
-			for {
-				m, err := reader.Fetch(context.Background())
-				if err != nil {
-					log.Fatalf("read error on %s, %s", topic, err.Error())
-				}
-
-				err = reader.Commit(context.Background(), m)
-				if err != nil {
-					log.Fatalf("commit error on %s, %s", topic, err.Error())
-				}
-
-				if len(m.Value) != msgLen {
-					log.Fatalf("bad message length %s, %d != %d", topic, len(m.Value), msgLen)
-				}
-
-				count++
-				if count%interval == 0 {
-					log.Printf("%s: receive count = %d", topic, count)
-				}
-				if count == iterations {
-					done.Done()
-				}
-			}
-		}(topic)
+		go startWriter(topic, msg, interval, &ready)
+		go startReader(topic, msgLen, interval, &ready, &starter, &done)
 	}
 
 	ready.Wait()
@@ -161,4 +87,79 @@ func main() {
 	diff := end.Sub(start)
 	rate := float64(count) / float64(diff.Seconds())
 	log.Printf("Received %d messages from %d topics in %s, or %.2f msgs/sec", count, topics, diff, rate)
+}
+
+func startWriter(topic string, msg []byte, interval int, ready *sync.WaitGroup) {
+	writer, err := kafka.NewProducer(conf.ConnectorConfig{
+		Brokers: []string{kafkaHostPort},
+	}, conf.NATSKafkaBridgeConfig{
+		ConnectTimeout: connectTimeout,
+	}, topic)
+	if err != nil {
+		log.Fatalf("error creating producer: %s", err.Error())
+	}
+
+	chunk := 10
+	log.Printf("sending %d messages through %s kafka in chunks of %d...", iterations, topic, chunk)
+	for i := 0; i < iterations/chunk; i++ {
+		for j := 0; j < chunk; j++ {
+			err := writer.Write(kafka.Message{
+				Key:   []byte(topic),
+				Value: msg,
+			})
+			if err != nil {
+				log.Fatalf("error putting messages on topic, %s", err.Error())
+			}
+		}
+		if (i*chunk)%interval == 0 {
+			log.Printf("%s: send count = %d", topic, (i+1)*chunk)
+		}
+	}
+
+	writer.Close()
+	ready.Done()
+	log.Printf("sender ready for topic %s", topic)
+}
+
+func startReader(topic string, msgLen, interval int, ready, starter, done *sync.WaitGroup) {
+	reader, err := kafka.NewConsumer(conf.ConnectorConfig{
+		Brokers:  []string{kafkaHostPort},
+		Topic:    topic,
+		GroupID:  topic + ".grp",
+		MinBytes: 100,
+		MaxBytes: 10e6, // 10MB
+	}, 5*time.Second)
+	if err != nil {
+		log.Fatalf("error creating consumer: %s", err.Error())
+	}
+
+	log.Printf("receiver ready for topic %s", topic)
+	ready.Done()
+	starter.Wait()
+	log.Printf("reading %d messages from %s kafka...", iterations, topic)
+
+	count := 0
+	for {
+		m, err := reader.Fetch(context.Background())
+		if err != nil {
+			log.Fatalf("read error on %s, %s", topic, err.Error())
+		}
+
+		err = reader.Commit(context.Background(), m)
+		if err != nil {
+			log.Fatalf("commit error on %s, %s", topic, err.Error())
+		}
+
+		if len(m.Value) != msgLen {
+			log.Fatalf("bad message length %s, %d != %d", topic, len(m.Value), msgLen)
+		}
+
+		count++
+		if count%interval == 0 {
+			log.Printf("%s: receive count = %d", topic, count)
+		}
+		if count == iterations {
+			done.Done()
+		}
+	}
 }

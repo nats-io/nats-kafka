@@ -26,6 +26,7 @@ import (
 	"github.com/nats-io/nats-kafka/server/conf"
 )
 
+// Producer represents a Kafka producer.
 type Producer interface {
 	Write(Message) error
 	Close() error
@@ -40,6 +41,7 @@ type saramaProducer struct {
 	tlsSkipVerify bool
 }
 
+// IsTopicExist returns whether an error is caused by a topic already existing.
 func IsTopicExist(err error) bool {
 	var terr *sarama.TopicError
 	if !errors.As(err, &terr) {
@@ -48,6 +50,7 @@ func IsTopicExist(err error) bool {
 	return terr.Err == sarama.ErrTopicAlreadyExists
 }
 
+// NewProducer returns a new Kafka Producer.
 func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic string) (Producer, error) {
 	sc := sarama.NewConfig()
 	sc.Producer.Return.Successes = true
@@ -119,6 +122,8 @@ type erroredProducer struct {
 	err error
 }
 
+// NewErroredProducer returns a Producer that fails when any methods are
+// called.
 func NewErroredProducer(err error) Producer {
 	return &erroredProducer{err: err}
 }

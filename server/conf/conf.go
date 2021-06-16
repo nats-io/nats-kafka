@@ -79,6 +79,7 @@ type TLSConf struct {
 	Root string
 }
 
+// SASL holds the configuration for SASL authentication.
 type SASL struct {
 	User               string
 	Password           string
