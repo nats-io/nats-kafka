@@ -26,6 +26,7 @@ import (
 	"github.com/nats-io/nats-kafka/server/conf"
 )
 
+// Message represents a Kafka message.
 type Message struct {
 	Topic     string
 	Partition int
@@ -35,6 +36,7 @@ type Message struct {
 	Value []byte
 }
 
+// Consumer represents a Kafka Consumer.
 type Consumer interface {
 	Fetch(context.Context) (Message, error)
 	Commit(context.Context, Message) error
@@ -59,6 +61,7 @@ type saramaConsumer struct {
 	consumeErrCh chan error
 }
 
+// NewConsumer returns a new Kafka Consumer.
 func NewConsumer(cc conf.ConnectorConfig, dialTimeout time.Duration) (Consumer, error) {
 	sc := sarama.NewConfig()
 	sc.Net.DialTimeout = dialTimeout

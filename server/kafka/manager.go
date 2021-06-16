@@ -24,6 +24,7 @@ import (
 	"github.com/nats-io/nats-kafka/server/conf"
 )
 
+// Manager represents an object that can manage Kafka Producers and Consumers.
 type Manager interface {
 	CreateTopic(topic string, partitions, replication int) error
 	Close() error
@@ -33,6 +34,7 @@ type saramaManager struct {
 	ca sarama.ClusterAdmin
 }
 
+// NewManager returns a Kafka Manager.
 func NewManager(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig) (Manager, error) {
 	sc := sarama.NewConfig()
 	sc.Net.DialTimeout = time.Duration(bc.ConnectTimeout) * time.Millisecond
