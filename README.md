@@ -60,8 +60,8 @@ monitoring.
 
 [License-Url]: https://www.apache.org/licenses/LICENSE-2.0
 [License-Image]: https://img.shields.io/badge/License-Apache2-blue.svg
-[Build-Status-Url]: https://travis-ci.com/nats-io/nats-kafka
-[Build-Status-Image]: https://travis-ci.com/nats-io/nats-kafka.svg?branch=master
+[Build-Status-Url]: https://github.com/nats-io/nats-kafka/actions/workflows/testing.yaml
+[Build-Status-Image]: https://github.com/nats-io/nats-kafka/actions/workflows/testing.yaml/badge.svg?branch=master
 [Coverage-Url]: https://coveralls.io/r/nats-io/nats-kafka?branch=master
 [Coverage-image]: https://coveralls.io/repos/github/nats-io/nats-kafka/badge.svg?branch=master
 [ReportCard-Url]: https://goreportcard.com/report/nats-io/nats-kafka
