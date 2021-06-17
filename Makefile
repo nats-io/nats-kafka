@@ -43,6 +43,11 @@ test-cover:
 	bash -e -c "trap 'trap - SIGINT ERR EXIT; $(MAKE) teardown-docker-test' SIGINT ERR EXIT; \
 		$(MAKE) setup-docker-test && $(MAKE) run-test-cover"
 
+.PHONY: test-codecov
+test-codecov:
+	bash -e -c "trap 'trap - SIGINT ERR EXIT; $(MAKE) teardown-docker-test' SIGINT ERR EXIT; \
+		$(MAKE) setup-docker-test && $(MAKE) run-test-codecov"
+
 .PHONY: setup-docker-test
 setup-docker-test:
 	docker-compose -p nats_kafka_test -f resources/test_servers.yml up -d
@@ -63,9 +68,15 @@ run-test-failfast:
 
 .PHONY: run-test-cover
 run-test-cover:
-	go test -count=1 -timeout 5m -coverpkg=./... -coverprofile=cover.out ./...
-	go tool cover -html=cover.out
-	rm cover.out
+	go test -count=1 -timeout 5m -coverpkg=./... -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out
+	rm coverage.out
+
+.PHONY: run-test-codecov
+run-test-codecov:
+	go test -v -count=1 -timeout 5m -short -race -covermode=atomic -coverprofile=coverage.out ./...
+	./scripts/codecov_upload.sh
+	rm coverage.out
 
 nats-kafka.docker: $(goSrc)
 	CGO_ENABLED=0 go build -o $@ \
