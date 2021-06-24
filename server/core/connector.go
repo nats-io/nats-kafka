@@ -307,8 +307,7 @@ func (conn *BridgeConnector) setUpListener(target kafka.Consumer, natsCallbackFu
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
-	ctx := context.Background()
-	cancelCtx, cancelFunc := context.WithCancel(ctx)
+	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 
 	traceEnabled := conn.bridge.Logger().TraceEnabled()
 
@@ -327,7 +326,7 @@ func (conn *BridgeConnector) setUpListener(target kafka.Consumer, natsCallbackFu
 		}
 
 		if conn.config.GroupID != "" {
-			err := target.Commit(ctx, msg)
+			err := target.Commit(cancelCtx, msg)
 
 			if err != nil {
 				conn.stats.AddMessageIn(l)

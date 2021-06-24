@@ -59,6 +59,8 @@ type saramaConsumer struct {
 	fetchCh      chan *sarama.ConsumerMessage
 	commitCh     chan *sarama.ConsumerMessage
 	consumeErrCh chan error
+
+	cancel context.CancelFunc
 }
 
 // NewConsumer returns a new Kafka Consumer.
@@ -97,10 +99,6 @@ func NewConsumer(cc conf.ConnectorConfig, dialTimeout time.Duration) (Consumer, 
 		saslOn:        sc.Net.SASL.Enable,
 		tlsOn:         sc.Net.TLS.Enable,
 		tlsSkipVerify: cc.SASL.InsecureSkipVerify,
-
-		fetchCh:      make(chan *sarama.ConsumerMessage),
-		commitCh:     make(chan *sarama.ConsumerMessage),
-		consumeErrCh: make(chan error),
 	}
 
 	if cons.groupMode {
@@ -109,9 +107,14 @@ func NewConsumer(cc conf.ConnectorConfig, dialTimeout time.Duration) (Consumer, 
 			return nil, err
 		}
 		cons.cg = cg
+		cons.fetchCh = make(chan *sarama.ConsumerMessage)
+		cons.commitCh = make(chan *sarama.ConsumerMessage)
+		cons.consumeErrCh = make(chan error)
+
+		ctx := context.Background()
+		ctx, cons.cancel = context.WithCancel(ctx)
 
 		go func(topic string) {
-			ctx := context.Background()
 			topics := []string{topic}
 			for {
 				if err := cons.cg.Consume(ctx, topics, cons); err != nil {
@@ -136,6 +139,7 @@ func NewConsumer(cc conf.ConnectorConfig, dialTimeout time.Duration) (Consumer, 
 	return cons, nil
 }
 
+// NetInfo returns information about whether SASL and TLS are enabled.
 func (c *saramaConsumer) NetInfo() string {
 	saslInfo := "SASL disabled"
 	if c.saslOn {
@@ -153,6 +157,8 @@ func (c *saramaConsumer) NetInfo() string {
 	return fmt.Sprintf("%s, %s", saslInfo, tlsInfo)
 }
 
+// Fetch reads an incoming message. In group mode, the message is outstanding
+// until committed.
 func (c *saramaConsumer) Fetch(ctx context.Context) (Message, error) {
 	if c.groupMode {
 		select {
@@ -187,6 +193,7 @@ func (c *saramaConsumer) Fetch(ctx context.Context) (Message, error) {
 	}
 }
 
+// Commit commits a message. This is only available in group mode.
 func (c *saramaConsumer) Commit(ctx context.Context, m Message) error {
 	if !c.groupMode {
 		return fmt.Errorf("commit is only available in group mode")
@@ -211,14 +218,17 @@ func (c *saramaConsumer) Commit(ctx context.Context, m Message) error {
 	return nil
 }
 
+// GroupMode returns whether the consumer is in group mode or not.
 func (c *saramaConsumer) GroupMode() bool {
 	return c.groupMode
 }
 
+// Close closes the underlying Kafka consumer connection.
 func (c *saramaConsumer) Close() error {
 	if c.groupMode {
 		close(c.fetchCh)
 		close(c.commitCh)
+		c.cancel()
 		return c.cg.Close()
 	}
 
@@ -229,14 +239,18 @@ func (c *saramaConsumer) Close() error {
 	return c.c.Close()
 }
 
+// Setup is a no-op. It only exists to satisfy sarama.ConsumerGroupHandler.
 func (c *saramaConsumer) Setup(sarama.ConsumerGroupSession) error {
 	return nil
 }
 
+// Cleanup is a no-op. It only exists to satisfy sarama.ConsumerGroupHandler.
 func (c *saramaConsumer) Cleanup(sarama.ConsumerGroupSession) error {
 	return nil
 }
 
+// ConsumeClaim processes incoming consumer group messages. This satisfies
+// sarama.ConsumerGroupHandler.
 func (c *saramaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for cmsg := range claim.Messages() {
 		c.fetchCh <- cmsg
