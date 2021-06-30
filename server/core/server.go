@@ -209,7 +209,9 @@ func (server *NATSKafkaBridge) Stop() {
 	}
 
 	if server.nats != nil {
-		server.nats.Close()
+		if err := server.nats.Drain(); err != nil {
+			server.logger.Noticef("error draining NATS connection %s", err.Error())
+		}
 		server.logger.Noticef("disconnected from NATS")
 	}
 

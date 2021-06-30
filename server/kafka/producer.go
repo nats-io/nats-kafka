@@ -88,6 +88,7 @@ func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic s
 	}, nil
 }
 
+// NetInfo returns information about whether SASL and TLS are enabled.
 func (p *saramaProducer) NetInfo() string {
 	saslInfo := "SASL disabled"
 	if p.saslOn {
@@ -105,6 +106,7 @@ func (p *saramaProducer) NetInfo() string {
 	return fmt.Sprintf("%s, %s", saslInfo, tlsInfo)
 }
 
+// Write sends an outgoing message.
 func (p *saramaProducer) Write(m Message) error {
 	_, _, err := p.sp.SendMessage(&sarama.ProducerMessage{
 		Topic: p.topic,
@@ -114,6 +116,8 @@ func (p *saramaProducer) Write(m Message) error {
 	return err
 }
 
+// Close closes the underlying Kafka connection. It blocks until all messages
+// are sent.
 func (p *saramaProducer) Close() error {
 	return p.sp.Close()
 }
