@@ -61,9 +61,9 @@ monitoring.
 [License-Url]: https://www.apache.org/licenses/LICENSE-2.0
 [License-Image]: https://img.shields.io/badge/License-Apache2-blue.svg
 [Build-Status-Url]: https://github.com/nats-io/nats-kafka/actions/workflows/testing.yaml
-[Build-Status-Image]: https://github.com/nats-io/nats-kafka/actions/workflows/testing.yaml/badge.svg?branch=master
+[Build-Status-Image]: https://github.com/nats-io/nats-kafka/actions/workflows/testing.yaml/badge.svg?branch=main
 [Coverage-Url]: https://app.codecov.io/gh/nats-io/nats-kafka
-[Coverage-image]: https://codecov.io/gh/nats-io/nats-kafka/branch/master/graph/badge.svg
+[Coverage-image]: https://codecov.io/gh/nats-io/nats-kafka/branch/main/graph/badge.svg
 [ReportCard-Url]: https://goreportcard.com/report/nats-io/nats-kafka
 [ReportCard-Image]: https://goreportcard.com/badge/github.com/nats-io/nats-kafka
 
