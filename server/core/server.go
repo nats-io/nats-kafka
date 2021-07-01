@@ -46,6 +46,7 @@ type NATSKafkaBridge struct {
 	natsLock sync.Mutex
 	nats     *nats.Conn
 	stan     stan.Conn
+	js       nats.JetStreamContext
 
 	connectors []Connector
 
@@ -162,6 +163,9 @@ func (server *NATSKafkaBridge) Start() error {
 	if err := server.connectToSTAN(); err != nil {
 		return err
 	}
+	if err := server.connectToJetStream(); err != nil {
+		return err
+	}
 
 	if err := server.initializeConnectors(); err != nil {
 		return err
@@ -269,6 +273,13 @@ func (server *NATSKafkaBridge) Stan() stan.Conn {
 	return server.stan
 }
 
+// JetStream hosts a shared JetStream connection for the connectors
+func (server *NATSKafkaBridge) JetStream() nats.JetStreamContext {
+	server.natsLock.Lock()
+	defer server.natsLock.Unlock()
+	return server.js
+}
+
 // CheckNATS returns true if the bridge is connected to nats
 func (server *NATSKafkaBridge) CheckNATS() bool {
 	server.natsLock.Lock()
@@ -295,6 +306,21 @@ func (server *NATSKafkaBridge) CheckStan() bool {
 	}
 
 	return server.stan != nil
+}
+
+// CheckJetStream returns true if the bridge is connected to JetStream
+func (server *NATSKafkaBridge) CheckJetStream() bool {
+	server.natsLock.Lock()
+	defer server.natsLock.Unlock()
+
+	if server.nats == nil {
+		return false
+	}
+	if server.nats.ConnectedUrl() == "" {
+		return false
+	}
+
+	return server.js != nil
 }
 
 // ConnectorError is called by a connector if it has a failure that requires a reconnect
