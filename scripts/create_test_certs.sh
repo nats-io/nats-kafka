@@ -1,110 +1,156 @@
-#!/bin/bash
-# References:
-# http://docs.confluent.io/2.0.0/kafka/ssl.html
-# http://stackoverflow.com/questions/2846828/converting-jks-to-p12
-# https://raw.githubusercontent.com/trastle/docker-kafka-ssl/master/generate-docker-kafka-ssl-certs.sh
+#!/usr/bin/env bash
+set -euo pipefail
 
-PASSWORD="password"
+################################################################################
+# CA Cert
+################################################################################
+mkdir -p ./demoCA/newcerts
+rm -f demoCA/index.txt
+touch demoCA/index.txt
+echo "01" > demoCA/serial
 
-SERVER_JKS="server.jks"
-SERVER_P12="server.p12"
-SERVER_PEM="server.pem"
+prefix="ca"
+openssl genrsa -out ${prefix}-key.pem
+openssl req -new -key ${prefix}-key.pem -out ${prefix}-csr.pem \
+	-config <(echo "
+		[ req ]
+		prompt = no
+		distinguished_name = req_distinguished_name
+		string_mask = utf8only
+		utf8 = yes
+		x509_extensions	= v3_ca
 
-CLIENT_JKS="client.jks"
-CLIENT_P12="client.p12"
-CLIENT_PEM="client.pem"
+		[ req_distinguished_name ]
+		C = US
+		ST = CA
+		L = San Francisco
+		O = Synadia
+		OU = nats.io
+		CN = localhost ${prefix}
 
-TRUSTSTORE_JKS="truststore.jks"
-TRUSTSTORE_P12="truststore.p12"
-TRUSTSTORE_PEM="truststore.pem"
+		[ v3_ca ]
+		subjectKeyIdentifier=hash
+		authorityKeyIdentifier=keyid:always,issuer
+		basicConstraints = critical,CA:true
+	")
+openssl ca -batch -keyfile ${prefix}-key.pem -selfsign -notext \
+	-config <(echo "
+		[ ca ]
+		default_ca = ca_default
 
-echo "Clearing existing Kafka SSL certs..."
-cd resources
-rm -rf certs
-mkdir certs
+		[ ca_default ]
+		dir = ./demoCA
+		database = ./demoCA/index.txt
+		new_certs_dir = ./demoCA/newcerts
+		serial = ./demoCA/serial
+		default_md = default
+		policy = policy_anything
+		x509_extensions	= v3_ca
+		default_md = sha256
 
-(
-echo "Generating Kafka SSL certs..."
-cd certs
-# create a new x509 cert, store it in ca-cert and store the key in ca-key
-openssl req -new -x509 -keyout ca-key -out ca-cert -days 730 -passout pass:$PASSWORD \
-   -subj "/C=US/ST=CA/L=LosAngeles/O=None/OU=None/CN=nat.kafka.ssl" \
-   -addext "subjectAltName = DNS:nat.kafka.ssl"
+		default_enddate = 20291014135726Z
+		copy_extensions = copy
 
-##
-## Trust Store ##
-##
+		[ policy_anything ]
+		countryName = optional
+		stateOrProvinceName = optional
+		localityName = optional
+		organizationName = optional
+		organizationalUnitName = optional
+		commonName = supplied
+		emailAddress = optional
 
-# import the cert into the trust store, jks file
-keytool -keystore $TRUSTSTORE_JKS -alias CARoot -import -file ca-cert -storepass $PASSWORD -noprompt -storetype pkcs12
+		[ v3_ca ]
+		subjectKeyIdentifier=hash
+		authorityKeyIdentifier=keyid:always,issuer
+		basicConstraints = critical,CA:true
+	") \
+	-out ${prefix}-cert.pem -infiles ${prefix}-csr.pem
 
-# create a p12 for the server keystore
-keytool -importkeystore -srckeystore $TRUSTSTORE_JKS -destkeystore $TRUSTSTORE_P12 -srcstoretype JKS -deststoretype PKCS12 -srcstorepass $PASSWORD -deststorepass $PASSWORD -noprompt
+################################################################################
+# Leaf Certs
+################################################################################
+leafs=( client server )
+for prefix in "${leafs[@]}"; do
+	openssl genrsa -out ${prefix}-key.pem
+	openssl req -new -key ${prefix}-key.pem -out ${prefix}-csr.pem \
+		-config <(echo "
+			[ req ]
+			prompt = no
+			distinguished_name = req_distinguished_name
+			req_extensions = v3_req
+			string_mask = utf8only
+			utf8 = yes
 
-# Create a PEM for the server keystore
-openssl pkcs12 -in $TRUSTSTORE_P12 -out $TRUSTSTORE_PEM -nodes -passin pass:$PASSWORD
+			[ req_distinguished_name ]
+			C = US
+			ST = CA
+			L = San Francisco
+			O = Synadia
+			OU = nats.io
+			CN = localhost ${prefix}
 
-##
-## Server Key Store ##
-##
+			[ v3_req ]
+			subjectAltName = @alt_names
 
-# Create the server keystore JKS file
-keytool -keystore $SERVER_JKS -alias localhost -validity 730 -genkey -storepass $PASSWORD -keypass $PASSWORD \
-  -dname "CN=localhost, OU=None, O=None, L=LosAngeles, ST=California, C=US" -storetype pkcs12 -keyalg RSA -keysize 2048 \
-  -ext SAN=dns:localhost
-# Add the cert file to the serer keystore
-keytool -keystore $SERVER_JKS -alias localhost -certreq -file server-file -storepass $PASSWORD -noprompt
-# sign the cert and save to server-signed
-openssl x509 -req -CA ca-cert -CAkey ca-key -in server-file -out server-signed -days 730 -CAcreateserial -passin pass:$PASSWORD
-# Add the ca-cert to the server keystore as root
-keytool -keystore $SERVER_JKS -alias CARoot -import -file ca-cert -storepass $PASSWORD -noprompt
-# Add the signed cert to the server keystore for localhost
-keytool -keystore $SERVER_JKS -alias localhost -import -file server-signed -storepass $PASSWORD -noprompt
-# create a p12 for the server keystore
-keytool -importkeystore -srckeystore $SERVER_JKS -destkeystore $SERVER_P12 -srcstoretype JKS -deststoretype PKCS12 -srcstorepass $PASSWORD -deststorepass $PASSWORD -noprompt
-# Create a PEM for the server keystore
-openssl pkcs12 -in $SERVER_P12 -out $SERVER_PEM -nodes -passin pass:$PASSWORD
+			[ alt_names ]
+			IP.1 = 127.0.0.1
+			IP.2 = 0:0:0:0:0:0:0:1
+			DNS.1 = localhost
+			DNS.2 = ${prefix}.localhost
+		")
+	openssl ca -batch -keyfile ca-key.pem -cert ca-cert.pem -notext \
+		-config <(echo "
+			[ ca ]
+			default_ca = ca_default
 
-# Export the server cert and convert to .pem
-keytool -export -alias localhost -file server-cert.der -keystore $SERVER_JKS -storepass $PASSWORD -noprompt
-openssl x509 -inform der -in server-cert.der -out server-cert.pem -passin pass:$PASSWORD
-# Export the server key
-openssl pkcs12 -in $SERVER_P12 -nodes -nocerts -out server.key -passin pass:$PASSWORD
-sed -ne '/-BEGIN PRIVATE KEY-/,/-END PRIVATE KEY-/p' server.key > server-key.pem
+			[ ca_default ]
+			dir = ./demoCA
+			database = ./demoCA/index.txt
+			new_certs_dir = ./demoCA/newcerts
+			serial = ./demoCA/serial
+			default_md = default
+			policy = policy_anything
+			x509_extensions	= ext_ca
+			default_md = sha256
 
-##
-## Client Key Store ##
-##
+			default_enddate = 20291014135726Z
+			copy_extensions = copy
 
-# Create the client keystore JKS file
-keytool -keystore $CLIENT_JKS -alias localhost -validity 730 -genkey -storepass $PASSWORD -keypass $PASSWORD \
-  -dname "CN=nat.kafka.client.ssl, OU=None, O=None, L=LosAngeles, ST=California, C=US" -storetype pkcs12 -keyalg RSA -keysize 2048 \
-  -ext SAN=dns:localhost
-# Add the cert file to the client keystore
-keytool -keystore $CLIENT_JKS -alias localhost -certreq -file client-file -storepass $PASSWORD -noprompt
-# sign the cert and save to cert-signed
-openssl x509 -req -CA ca-cert -CAkey ca-key -in client-file -out client-signed -days 730 -CAcreateserial -passin pass:$PASSWORD
-# Add the ca-cert to the server keystore as root
-keytool -keystore $CLIENT_JKS -alias CARoot -import -file ca-cert -storepass $PASSWORD -noprompt
-# Add the signed cert to the server keystore for localhost
-keytool -keystore $CLIENT_JKS -alias localhost -import -file client-signed -storepass $PASSWORD -noprompt
-# create a p12 for the server keystore
-keytool -importkeystore -srckeystore $CLIENT_JKS -destkeystore $CLIENT_P12 -srcstoretype JKS -deststoretype PKCS12 -srcstorepass $PASSWORD -deststorepass $PASSWORD -noprompt
-# Create a PEM for the server keystore
-openssl pkcs12 -in $CLIENT_P12 -out $CLIENT_PEM -nodes -passin pass:$PASSWORD
+			[ policy_anything ]
+			countryName = optional
+			stateOrProvinceName = optional
+			localityName = optional
+			organizationName = optional
+			organizationalUnitName = optional
+			commonName = supplied
+			emailAddress = optional
 
-# Export the client cert and convert to .pem
-keytool -export -alias localhost -file client-cert.der -keystore $CLIENT_JKS -storepass $PASSWORD -noprompt
-openssl x509 -inform der -in client-cert.der -out client-cert.pem -passin pass:$PASSWORD
-# Export the client key
-openssl pkcs12 -in $CLIENT_P12 -nodes -nocerts -out client.key -passin pass:$PASSWORD
-sed -ne '/-BEGIN PRIVATE KEY-/,/-END PRIVATE KEY-/p' client.key > client-key.pem
+			[ ext_ca ]
+			basicConstraints = CA:FALSE
+			keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+			extendedKeyUsage = serverAuth, clientAuth
+		") \
+		-out ${prefix}-cert.pem -infiles ${prefix}-csr.pem
+done
 
-# clean up temp files
-rm *.der
-rm *.p12
-rm *.key
+rm *-csr.pem
+rm -rf ./demoCA
 
-# set permissions
-chmod +rx *
-)
+################################################################################
+# Keystore and Truststore
+################################################################################
+
+password="password"
+entities=( ca client server )
+for entity in "${entities[@]}"; do
+	openssl pkcs12 -export -out ${entity}.pfx -inkey ${entity}-key.pem \
+	-in ${entity}-cert.pem -password "pass:${password}"
+
+	keytool -importkeystore -srckeystore ${entity}.pfx -srcstoretype pkcs12 \
+		-srcalias 1 -srcstorepass ${password} -destkeystore keystore.jks \
+		-deststoretype jks -deststorepass ${password} -destalias ${entity}
+done
+cp keystore.jks truststore.jks
+
+rm *.pfx

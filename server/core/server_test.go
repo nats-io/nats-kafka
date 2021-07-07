@@ -37,7 +37,7 @@ const (
 	serverKey    = "../../resources/certs/server-key.pem"
 	clientCert   = "../../resources/certs/client-cert.pem"
 	clientKey    = "../../resources/certs/client-key.pem"
-	caFile       = "../../resources/certs/truststore.pem"
+	caFile       = "../../resources/certs/ca-cert.pem"
 	saslUser     = "admin"
 	saslPassword = "admin-secret"
 )

@@ -18,7 +18,7 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://:9092,SSL://:9093,SASL_PLAINTEXT://:9094
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,SSL://localhost:9093,SASL_PLAINTEXT://localhost:9094
       KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
-      KAFKA_SSL_KEYSTORE_LOCATION: '/certs/server.jks'
+      KAFKA_SSL_KEYSTORE_LOCATION: '/certs/keystore.jks'
       KAFKA_SSL_KEYSTORE_PASSWORD: 'password'
       KAFKA_SSL_KEY_PASSWORD: 'password'
       KAFKA_SSL_TRUSTSTORE_LOCATION: '/certs/truststore.jks'

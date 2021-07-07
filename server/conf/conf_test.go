@@ -33,7 +33,7 @@ func TestMakeTLSConfig(t *testing.T) {
 	tlsC := &TLSConf{
 		Cert: "../../resources/certs/client-cert.pem",
 		Key:  "../../resources/certs/client-key.pem",
-		Root: "../../resources/certs/truststore.pem",
+		Root: "../../resources/certs/ca-cert.pem",
 	}
 	_, err := tlsC.MakeTLSConfig()
 	require.NoError(t, err)
