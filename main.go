@@ -61,36 +61,41 @@ func main() {
 				}
 				server.Stop()
 				server := core.NewNATSKafkaBridge()
-				server.InitializeFromFlags(flags)
-				err = server.Start()
 
+				err = server.InitializeFromFlags(flags)
 				if err != nil {
-					if server.Logger() != nil {
-						server.Logger().Errorf("error starting bridge, %s", err.Error())
-					} else {
-						log.Printf("error starting bridge, %s", err.Error())
-					}
-					server.Stop()
-					os.Exit(0)
+					logErrorFatal(server, "error initializing config, %s", err.Error())
+				}
+
+				err = server.Start()
+				if err != nil {
+					logErrorFatal(server, "error starting bridge, %s", err.Error())
 				}
 			}
 		}
 	}()
 
 	server = core.NewNATSKafkaBridge()
-	server.InitializeFromFlags(flags)
-	err = server.Start()
-
+	err = server.InitializeFromFlags(flags)
 	if err != nil {
-		if server.Logger() != nil {
-			server.Logger().Errorf("error starting bridge, %s", err.Error())
-		} else {
-			log.Printf("error starting bridge, %s", err.Error())
-		}
-		server.Stop()
-		os.Exit(0)
+		logErrorFatal(server, "error initializing config, %s", err.Error())
+	}
+
+	err = server.Start()
+	if err != nil {
+		logErrorFatal(server, "error starting bridge, %s", err.Error())
 	}
 
 	// exit main but keep running goroutines
 	runtime.Goexit()
+}
+
+func logErrorFatal(b *core.NATSKafkaBridge, format string, args ...interface{}) {
+	if b.Logger() != nil {
+		b.Logger().Errorf(format, args...)
+	} else {
+		log.Printf(format, args...)
+	}
+	b.Stop()
+	os.Exit(0)
 }
