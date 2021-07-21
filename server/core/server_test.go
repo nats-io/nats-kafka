@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats-kafka/server/conf"
@@ -49,8 +50,9 @@ type TestEnv struct {
 	Stan          *nss.StanServer
 	KafkaHostPort string
 
-	NC *nats.Conn // for bypassing the bridge
-	SC stan.Conn  // for bypassing the bridge
+	NC *nats.Conn            // for bypassing the bridge
+	SC stan.Conn             // for bypassing the bridge
+	JS nats.JetStreamContext // for bypassing the bridge
 
 	natsPort       int
 	natsURL        string
@@ -91,6 +93,19 @@ func StartTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, error) 
 		return nil, err
 	}
 
+	for _, cc := range connections {
+		if !strings.Contains(cc.Type, "JetStream") {
+			continue
+		}
+		_, err := tbs.JS.AddStream(&nats.StreamConfig{
+			Name:     nuid.Next(),
+			Subjects: []string{cc.Subject},
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	err = tbs.StartBridge(connections)
 	if err != nil {
 		tbs.Close()
@@ -105,6 +120,18 @@ func StartTLSTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, erro
 	tbs, err := StartTestEnvironmentInfrastructure(false, true, collectTopics(connections))
 	if err != nil {
 		return nil, err
+	}
+	for _, cc := range connections {
+		if !strings.Contains(cc.Type, "JetStream") {
+			continue
+		}
+		_, err := tbs.JS.AddStream(&nats.StreamConfig{
+			Name:     nuid.Next(),
+			Subjects: []string{cc.Subject},
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	err = tbs.StartBridge(connections)
 	if err != nil {
@@ -123,6 +150,18 @@ func StartSASLTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, err
 	}
 	tbs.user = saslUser
 	tbs.password = saslPassword
+	for _, cc := range connections {
+		if !strings.Contains(cc.Type, "JetStream") {
+			continue
+		}
+		_, err := tbs.JS.AddStream(&nats.StreamConfig{
+			Name:     nuid.Next(),
+			Subjects: []string{cc.Subject},
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
 	err = tbs.StartBridge(connections)
 	if err != nil {
 		tbs.Close()
@@ -200,6 +239,10 @@ func (tbs *TestEnv) StartBridge(connections []conf.ConnectorConfig) error {
 		DiscoverPrefix:     stan.DefaultDiscoverPrefix,
 		MaxPubAcksInflight: stan.DefaultMaxPubAcksInflight,
 		ConnectWait:        2000,
+	}
+	config.JetStream = conf.JetStreamConfig{
+		MaxWait:                5000,
+		PublishAsyncMaxPending: 1,
 	}
 
 	if tbs.useTLS {
@@ -280,6 +323,12 @@ func (tbs *TestEnv) StartNATSandStan(port int, clusterID string, clientID string
 		}
 	}
 	tbs.Gnatsd = gnatsd.RunServer(&opts)
+	err = tbs.Gnatsd.EnableJetStream(&gnatsserver.JetStreamConfig{
+		MaxMemory: 1024,
+	})
+	if err != nil {
+		return err
+	}
 
 	if tbs.useTLS {
 		tbs.natsURL = fmt.Sprintf("tls://localhost:%d", opts.Port)
@@ -328,6 +377,12 @@ func (tbs *TestEnv) StartNATSandStan(port int, clusterID string, clientID string
 		return err
 	}
 	tbs.SC = sc
+
+	js, err := nc.JetStream()
+	if err != nil {
+		return err
+	}
+	tbs.JS = js
 
 	return nil
 }

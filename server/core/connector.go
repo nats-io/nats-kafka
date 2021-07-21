@@ -65,6 +65,9 @@ func CreateConnector(config conf.ConnectorConfig, bridge *NATSKafkaBridge) (Conn
 			return nil, err
 		}
 		return NewStan2KafkaConnector(bridge, config), nil
+	case conf.JetStreamToKafka:
+		return NewJetStream2KafkaConnector(bridge, config), nil
+
 	case conf.KafkaToNATS:
 		return NewKafka2NATSConnector(bridge, config), nil
 	case conf.KafkaToStan:
@@ -72,6 +75,8 @@ func CreateConnector(config conf.ConnectorConfig, bridge *NATSKafkaBridge) (Conn
 			return nil, err
 		}
 		return NewKafka2StanConnector(bridge, config), nil
+	case conf.KafkaToJetStream:
+		return NewKafka2JetStreamConnector(bridge, config), nil
 	default:
 		return nil, fmt.Errorf("unknown connector type %q in configuration", config.Type)
 	}
@@ -144,6 +149,11 @@ type NATSCallback func(msg kafka.Message) error
 
 // ShutdownCallback is returned when setting up a callback or polling so the connector can shut it down
 type ShutdownCallback func() error
+
+func (conn *BridgeConnector) jetStreamMessageHandler(msg kafka.Message) error {
+	_, err := conn.bridge.JetStream().Publish(conn.dest(msg), msg.Value)
+	return err
+}
 
 func (conn *BridgeConnector) stanMessageHandler(msg kafka.Message) error {
 	return conn.bridge.Stan().Publish(conn.dest(msg), msg.Value)
@@ -241,8 +251,8 @@ func (conn *BridgeConnector) subscribeToNATS(subject string, queueName string) (
 	return conn.bridge.NATS().QueueSubscribe(subject, queueName, callback)
 }
 
-// subscribeToChannel uses the bridges STAN connection to subscribe based on the config
-// The start position/time and durable name are optional
+// subscribeToChannel uses the bridges STAN connection to subscribe based on
+// the config The start position/time and durable name are optional
 func (conn *BridgeConnector) subscribeToChannel() (stan.Subscription, error) {
 	if conn.bridge.Stan() == nil {
 		return nil, fmt.Errorf("bridge not configured to use NATS streaming")
@@ -300,6 +310,77 @@ func (conn *BridgeConnector) subscribeToChannel() (stan.Subscription, error) {
 	sub, err := conn.bridge.Stan().Subscribe(conn.config.Channel, callback, options...)
 
 	return sub, err
+}
+
+// set up a JetStream subscription, assumes the lock is held
+func (conn *BridgeConnector) subscribeToJetStream(subject string) (*nats.Subscription, error) {
+	if conn.bridge.JetStream() == nil {
+		return nil, fmt.Errorf("bridge not configured to use JetStream")
+	}
+
+	options := []nats.SubOpt{}
+
+	if conn.config.DurableName != "" {
+		options = append(options, nats.Durable(conn.config.DurableName))
+	}
+
+	if conn.config.StartAtTime != 0 {
+		t := time.Unix(conn.config.StartAtTime, 0)
+		options = append(options, nats.StartTime(t))
+	} else if conn.config.StartAtSequence == -1 {
+		options = append(options, nats.DeliverLast())
+	} else if conn.config.StartAtSequence > 0 {
+		options = append(options, nats.StartSequence(uint64(conn.config.StartAtSequence)))
+	} else {
+		options = append(options, nats.DeliverAll())
+	}
+
+	options = append(options, nats.AckExplicit())
+
+	if conn.bridge.config.JetStream.EnableFlowControl {
+		options = append(options, nats.EnableFlowControl())
+	}
+	if d := conn.bridge.config.JetStream.HeartbeatInterval; d > 0 {
+		options = append(options, nats.IdleHeartbeat(time.Duration(d)*time.Millisecond))
+	}
+
+	traceEnabled := conn.bridge.Logger().TraceEnabled()
+	ackSyncEnabled := conn.bridge.config.JetStream.EnableAckSync
+
+	callback := func(msg *nats.Msg) {
+		start := time.Now()
+		l := int64(len(msg.Data))
+
+		if traceEnabled {
+			conn.bridge.Logger().Tracef("%s received message", conn.String())
+		}
+
+		key := conn.calculateKey(conn.config.Subject, conn.config.DurableName)
+		err := conn.writer(msg).Write(kafka.Message{
+			Key:   key,
+			Value: msg.Data,
+		})
+
+		if err != nil {
+			conn.stats.AddMessageIn(l)
+			conn.bridge.Logger().Errorf("connector publish failure, %s, %s", conn.String(), err.Error())
+		} else {
+			if traceEnabled {
+				conn.bridge.Logger().Tracef("%s wrote message to kafka with key %s", conn.String(), string(key))
+			}
+			if ackSyncEnabled {
+				msg.AckSync()
+			} else {
+				msg.Ack()
+			}
+			if traceEnabled {
+				conn.bridge.Logger().Tracef("%s acked message to kafka", conn.String())
+			}
+			conn.stats.AddRequest(l, l, time.Since(start))
+		}
+	}
+
+	return conn.bridge.JetStream().Subscribe(subject, callback, options...)
 }
 
 func (conn *BridgeConnector) setUpListener(target kafka.Consumer, natsCallbackFunc NATSCallback) (ShutdownCallback, error) {

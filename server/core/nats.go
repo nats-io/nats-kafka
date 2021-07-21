@@ -157,3 +157,31 @@ func (server *NATSKafkaBridge) connectToSTAN() error {
 
 	return nil
 }
+
+func (server *NATSKafkaBridge) connectToJetStream() error {
+	server.natsLock.Lock()
+	defer server.natsLock.Unlock()
+
+	if server.js != nil {
+		return nil // already connected
+	}
+
+	server.logger.Noticef("connecting to JetStream")
+
+	var opts []nats.JSOpt
+	c := server.config.JetStream
+	if c.MaxWait > 0 {
+		opts = append(opts, nats.MaxWait(time.Duration(c.MaxWait)*time.Millisecond))
+	}
+	if c.PublishAsyncMaxPending > 0 {
+		opts = append(opts, nats.PublishAsyncMaxPending(c.PublishAsyncMaxPending))
+	}
+
+	js, err := server.nats.JetStream(opts...)
+	if err != nil {
+		return err
+	}
+	server.js = js
+
+	return nil
+}

@@ -54,10 +54,15 @@ const (
 	KafkaToNATS = "KafkaToNATS"
 	// KafkaToStan specifies a connector from Kafka to NATS streaming
 	KafkaToStan = "KafkaToStan"
+	// KafkaToJetStream specifies a connector from Kafka to JetStream
+	KafkaToJetStream = "KafkaToJetStream"
+
 	// NATSToKafka specifies a connector from NATS to Kafka
 	NATSToKafka = "NATSToKafka"
 	// STANToKafka specifies a connector from NATS streaming to Kafka
 	STANToKafka = "STANToKafka"
+	// JetStreamToKafka specifies a connector from JetStream to Kafka
+	JetStreamToKafka = "JetStreamToKafka"
 )
 
 // NATSKafkaBridgeConfig is the root structure for a bridge configuration file.
@@ -68,6 +73,7 @@ type NATSKafkaBridgeConfig struct {
 	Logging    logging.Config
 	NATS       NATSConfig
 	STAN       NATSStreamingConfig
+	JetStream  JetStreamConfig
 	Monitoring HTTPConfig
 	Connect    []ConnectorConfig
 }
@@ -157,6 +163,15 @@ type NATSStreamingConfig struct {
 	ConnectWait        int // milliseconds
 }
 
+// JetStreamConfig configuration for a JetStream connection
+type JetStreamConfig struct {
+	PublishAsyncMaxPending int
+	MaxWait                int // milliseconds
+	EnableFlowControl      bool
+	EnableAckSync          bool
+	HeartbeatInterval      int // milliseconds
+}
+
 // DefaultBridgeConfig generates a default configuration with
 // logging set to colors, time, debug and trace
 func DefaultBridgeConfig() NATSKafkaBridgeConfig {
@@ -187,11 +202,11 @@ type ConnectorConfig struct {
 	Type string // Can be any of the type constants (STANToKafka, ...)
 
 	Channel         string // Used for stan connections
-	DurableName     string // Optional, used for stan connections
-	StartAtSequence int64  // Start position for stan connection, -1 means StartWithLastReceived, 0 means DeliverAllAvailable (default)
+	DurableName     string // Optional, used for stan and jetstream connections
+	StartAtSequence int64  // Start position for stan and jetstream connection, -1 means StartWithLastReceived, 0 means DeliverAllAvailable (default)
 	StartAtTime     int64  // Start time, as Unix, time takes precedence over sequence
 
-	Subject   string // Used for nats connections
+	Subject   string // Used for nats and jetstream connections
 	QueueName string // Optional, used for nats connections
 
 	Brokers []string // list of brokers to use for creating a reader/writer
