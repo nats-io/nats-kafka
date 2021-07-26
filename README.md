@@ -7,28 +7,29 @@
 [![Build][Build-Status-Image]][Build-Status-Url]
 [![Coverage][Coverage-Image]][Coverage-Url]
 
-This project implements a multi-connector bridge between NATS or NATS streaming and Kafka topics.
+This project implements a multi-connector bridge between NATS, NATS Streaming,
+JetStream and Kafka topics.
 
 ## Features
 
 * Support for bridging from/to Kafka topics
-* Arbitrary subjects in NATS, wildcards for incoming messages
-* Arbitrary channels in NATS streaming
+* Arbitrary subjects in NATS and JetStream, wildcards for incoming messages
+* Arbitrary channels in NATS Streaming
 * Optional durable subscriber names for streaming
 * Configurable std-out logging
 * A single configuration file, with support for reload
-* Optional SSL to/from Kafka, NATS and NATS streaming
+* Optional SSL to/from Kafka, NATS, NATS Streaming, and JetStream
 * HTTP/HTTPS-based monitoring endpoints for health or statistics
 
 ## Overview
 
 The bridge runs as a single process with a configured set of connectors mapping
-a Kafka topic to a NATS subject or a NATS streaming channel. Connectors can
-also map the opposite direction from NATS to Kafka. Each connector is a one-way
-bridge.
+a Kafka topic to a NATS/JetStream subject or a NATS Streaming channel.
+Connectors can also map the opposite direction from NATS to Kafka. Each
+connector is a one-way bridge.
 
 Connectors share a NATS connection and an optional connection to the NATS
-streaming server. **Connectors each create a connection to Kafka, subject to
+Streaming server. **Connectors each create a connection to Kafka, subject to
 TCP connection sharing in the underlying library**
 
 Message values in Kafka are mapped to message bodies in NATS.
@@ -54,8 +55,9 @@ monitoring.
 ## External Resources
 
 * [NATS](https://nats.io/documentation/)
-* [NATS server](https://github.com/nats-io/nats-server)
+* [NATS Server](https://github.com/nats-io/nats-server)
 * [NATS Streaming](https://github.com/nats-io/nats-streaming-server)
+* [JetStream](https://docs.nats.io/jetstream/jetstream)
 * [Kafka](https://kafka.apache.org/)
 
 [License-Url]: https://www.apache.org/licenses/LICENSE-2.0
