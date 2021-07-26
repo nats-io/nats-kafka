@@ -10,6 +10,7 @@ The bridge uses a single configuration file passed on the command line or enviro
 * [Monitoring](#monitoring)
 * [NATS](#nats)
 * [NATS Streaming](#stan)
+* [JetStream](#js)
 * [Connectors](#connectors)
 
 The configuration file format matches the NATS server. Details can be found [here](https://docs.nats.io/nats-server/configuration#include-directive).
@@ -167,6 +168,26 @@ NATS streaming can be configured with the following properties:
 * `maxpubacksinflight` - maximum pub ACK messages that can be in flight for this connection.
 * `connectwait` - the time, in milliseconds, to wait before failing to connect to the streaming server.
 
+<a name="js"></a>
+
+## JetStream
+
+The bridge makes a single connection to JetStream. This connection is shared by all connectors. Configuration is through the `jetstream` section of the config file:
+
+```
+jetstream: {
+	maxwait: 5000,
+}
+```
+
+JetStream can be configured with the following properties:
+
+* `publishasyncmaxpending` - maximum outstanding async publishes that can be inflight at one time
+* `maxwait` - maximum amount of time we will wait for a response
+* `enableflowcontrol` - enables flow control for a push based consumer
+* `enableacksync` - uses AckSync instead of Ack when receiving messages
+* `heartbeatinterval` - enables push based consumers to have idle heartbeats delivered
+
 <a name="connectors"></a>
 
 ## Connectors
@@ -194,9 +215,12 @@ connect: [
 The most important property in the connector configuration is the `type`. The type determines which kind of connector is instantiated. Available, uni-directional, types include:
 
 * `KafkaToNATS` - a topic to NATS connector
-* `KafkaToStan` - a topic to streaming connector
-* `NATSToKafka` - a streaming to topic connector
-* `STANToKafka` - a NATS to topic connector
+* `KafkaToStan` - a topic to NATS Streaming connector
+* `KafkaToJetStream` - a topic to JetStream connector
+
+* `NATSToKafka` - a NATS to topic connector
+* `STANToKafka` - a NATS Streaming to topic connector
+* `JetStreamToKafka` - a JetStream to topic connector
 
 All connectors can have an optional id, which is used in monitoring:
 
@@ -204,17 +228,17 @@ All connectors can have an optional id, which is used in monitoring:
 
 For NATS connections, specify:
 
-* `subject` - the subject to subscribe/publish to, depending on the connections direction.
+* `subject` - for NATS/JetStream the subject to subscribe/publish to, depending on the connections direction.
 * `queuename` - the queue group to use in subscriptions, this is optional but useful for load balancing.
 
 Keep in mind that NATS queue groups do not guarantee ordering, since the queue subscribers can be on different nats-servers in a cluster. So if you have to bridges running with connectors on the same NATS queue/subject pair and have a high message rate you may get messages in the Kafka topic out of order.
 
-For streaming connections, there is a single required setting and several optional ones:
+For NATS Streaming connections, there is a single required setting and several optional ones:
 
-* `channel` - the streaming channel to subscribe/publish to.
-* `durablename` - (optional) durable name for the streaming subscription (if appropriate.)
-* `startatsequence` - (optional) start position, use -1 for start with last received, 0 for deliver all available (the default.)
-* `startattime` - (optional) the start position as a time, in Unix seconds since the epoch, mutually exclusive with `startatsequence`.
+* `channel` - the NATS Streaming channel to subscribe/publish to.
+* `durablename` - (optional) durable name for the NATS Streaming/JetStream subscription (if appropriate.)
+* `startatsequence` - (optional) for NATS Streaming/JetStream start position, use -1 for start with last received, 0 for deliver all available (the default.)
+* `startattime` - (optional) for NATS Streaming/JetStream the start position as a time, in Unix seconds since the epoch, mutually exclusive with `startatsequence`.
 
 All connectors must specify Kafka connection properties, with a few optional settings available as well:
 
@@ -240,6 +264,6 @@ Available key types are:
 
 If unset, an empty key is assigned during translation from NATS to Kafka. If the regex types are used and they don't match, an empty key is used.
 
-For nats streaming connections channel is treated as the subject and durable name is treated as the reply to, so that reply key type will use the durable name as the key.
+For NATS Streaming connections channel is treated as the subject and durable name is treated as the reply to, so that reply key type will use the durable name as the key.
 
 Every destination, may it be channel, subject or topic may be set using a go template that gets the message as data. e.g `topic: "{{ .Subject }}"`. Two template functions are available: replace (`"{{ .Subject | replace \"event\" \"message\" }}`) and substring (`"{{ .Subject | substring 0 5 }}"`)
