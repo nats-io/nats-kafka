@@ -16,7 +16,9 @@
 package core
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nuid"
@@ -608,4 +610,68 @@ func TestSASLReplyRegexKeyFromNATS(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, "gamma", string(key))
+}
+
+func TestNATSReconnectTimer(t *testing.T) {
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "NATSToKafka",
+			Subject: nuid.Next(),
+			Topic:   nuid.Next(),
+		},
+	}
+
+	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	tbs.Bridge.reconnectLock.Lock()
+	tbs.Bridge.config.ReconnectInterval = 125
+	nc := tbs.Bridge.nats
+	tbs.Bridge.nats = nil
+	tbs.Bridge.reconnectLock.Unlock()
+
+	tbs.Bridge.checkConnections()
+
+	tbs.Bridge.reconnectLock.Lock()
+	t1 := tbs.Bridge.reconnectTimer
+	tbs.Bridge.reconnectLock.Unlock()
+
+	time.Sleep(250 * time.Millisecond)
+
+	tbs.Bridge.reconnectLock.Lock()
+	tbs.Bridge.nats = nc
+	t2 := tbs.Bridge.reconnectTimer
+	tbs.Bridge.reconnectLock.Unlock()
+
+	require.NotEqual(t, t1, t2)
+}
+
+func TestNATSConnectorError(t *testing.T) {
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "NATSToKafka",
+			Subject: nuid.Next(),
+			Topic:   nuid.Next(),
+		},
+	}
+
+	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	tbs.Bridge.reconnectLock.Lock()
+	n1 := len(tbs.Bridge.reconnect)
+	tbs.Bridge.reconnectLock.Unlock()
+
+	tbs.Bridge.ConnectorError(tbs.Bridge.connectors[0], fmt.Errorf("error!"))
+
+	// Should be a no-op.
+	tbs.Bridge.ConnectorError(tbs.Bridge.connectors[0], fmt.Errorf("another error!"))
+
+	tbs.Bridge.reconnectLock.Lock()
+	n2 := len(tbs.Bridge.reconnect)
+	tbs.Bridge.reconnectLock.Unlock()
+
+	require.NotEqual(t, n1, n2)
 }

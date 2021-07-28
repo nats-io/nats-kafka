@@ -17,6 +17,7 @@
 package core
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -889,4 +890,107 @@ func TestSASLReplyRegexKeyFromStan(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, "beta", string(key))
+}
+
+func TestSTANReconnectTimer(t *testing.T) {
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "STANToKafka",
+			Channel: nuid.Next(),
+			Topic:   nuid.Next(),
+		},
+	}
+
+	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	tbs.Bridge.reconnectLock.Lock()
+	tbs.Bridge.config.ReconnectInterval = 125
+	sc1 := tbs.Bridge.stan
+	tbs.Bridge.stan = nil
+	tbs.Bridge.reconnectLock.Unlock()
+
+	tbs.Bridge.checkConnections()
+
+	time.Sleep(250 * time.Millisecond)
+
+	tbs.Bridge.reconnectLock.Lock()
+	sc2 := tbs.Bridge.stan
+	tbs.Bridge.reconnectLock.Unlock()
+
+	require.NotEqual(t, sc1, sc2)
+}
+
+func TestSTANConnectionLostClientIDRegistered(t *testing.T) {
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "STANToKafka",
+			Channel: nuid.Next(),
+			Topic:   nuid.Next(),
+		},
+	}
+
+	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	tbs.Bridge.reconnectLock.Lock()
+	tbs.Bridge.config.ReconnectInterval = 125
+	sc1 := tbs.Bridge.stan
+	tbs.Bridge.reconnectLock.Unlock()
+	tbs.Bridge.stanConnectionLost(sc1, fmt.Errorf("lost connection!"))
+
+	time.Sleep(250 * time.Millisecond)
+
+	tbs.Bridge.reconnectLock.Lock()
+	sc2 := tbs.Bridge.stan
+	tbs.Bridge.reconnectLock.Unlock()
+
+	require.NotEqual(t, sc1, sc2)
+}
+
+func TestSTANConnectionLost(t *testing.T) {
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "STANToKafka",
+			Channel: nuid.Next(),
+			Topic:   nuid.Next(),
+		},
+	}
+
+	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	tbs.Bridge.reconnectLock.Lock()
+	tbs.Bridge.config.ReconnectInterval = 125
+	sc1 := tbs.Bridge.stan
+	tbs.Bridge.config.STAN.ClientID += "new"
+	tbs.Bridge.reconnectLock.Unlock()
+	tbs.Bridge.stanConnectionLost(sc1, fmt.Errorf("lost connection!"))
+
+	time.Sleep(250 * time.Millisecond)
+
+	tbs.Bridge.reconnectLock.Lock()
+	sc2 := tbs.Bridge.stan
+	tbs.Bridge.reconnectLock.Unlock()
+
+	require.NotEqual(t, sc1, sc2)
+}
+
+func TestSTANAlreadyConnected(t *testing.T) {
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "STANToKafka",
+			Channel: nuid.Next(),
+			Topic:   nuid.Next(),
+		},
+	}
+
+	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	require.NoError(t, tbs.Bridge.connectToSTAN())
 }

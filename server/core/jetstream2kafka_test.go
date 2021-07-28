@@ -886,3 +886,19 @@ func TestSASLReplyKeyFromJetStream(t *testing.T) {
 	require.Equal(t, msg, string(data))
 	require.Equal(t, durable, string(key))
 }
+
+func TestJetStreamAlreadyConnected(t *testing.T) {
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "JetStreamToKafka",
+			Subject: nuid.Next(),
+			Topic:   nuid.Next(),
+		},
+	}
+
+	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	require.NoError(t, tbs.Bridge.connectToJetStream())
+}
