@@ -675,3 +675,21 @@ func TestNATSConnectorError(t *testing.T) {
 
 	require.NotEqual(t, n1, n2)
 }
+
+func TestBridgeStartsJetStreamDisabled(t *testing.T) {
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "NATSToKafka",
+			Subject: nuid.Next(),
+			Topic:   nuid.Next(),
+		},
+	}
+
+	tbs, err := StartTestEnvironmentInfrastructure(false, false, collectTopics(connect))
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	require.NoError(t, tbs.Gnatsd.DisableJetStream())
+
+	require.NoError(t, tbs.StartBridge(connect))
+}

@@ -166,6 +166,18 @@ func (server *NATSKafkaBridge) connectToJetStream() error {
 		return nil // already connected
 	}
 
+	var hasJetStream bool
+	for _, c := range server.config.Connect {
+		if strings.Contains(c.Type, "JetStream") {
+			hasJetStream = true
+			break
+		}
+	}
+	if !hasJetStream {
+		server.logger.Noticef("skipping JetStream connection, not configured")
+		return nil
+	}
+
 	server.logger.Noticef("connecting to JetStream")
 
 	var opts []nats.JSOpt
