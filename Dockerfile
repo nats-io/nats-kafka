@@ -1,7 +1,8 @@
-FROM golang:1.14 AS build
+FROM golang:1.16 AS build
 COPY . /go/src/nats-kafka
 WORKDIR /go/src/nats-kafka
-RUN make nats-kafka.docker
+ARG VERSION
+RUN VERSION=$VERSION make nats-kafka.docker
 
 FROM alpine:latest as osdeps
 RUN apk add --no-cache ca-certificates

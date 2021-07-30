@@ -31,7 +31,7 @@ import (
 	stan "github.com/nats-io/stan.go"
 )
 
-var version = "0.0-dev"
+var Version = "0.0-dev"
 
 // NATSKafkaBridge is the core structure for the server.
 type NATSKafkaBridge struct {
@@ -153,7 +153,7 @@ func (server *NATSKafkaBridge) Start() error {
 	server.connectors = []Connector{}
 	server.reconnect = map[string]Connector{}
 
-	server.logger.Noticef("starting NATS-Kafka Bridge, version %s", version)
+	server.logger.Noticef("starting NATS-Kafka Bridge, version %s", Version)
 	server.logger.Noticef("server time is %s", server.startTime.Format(time.UnixDate))
 
 	if err := server.connectToNATS(); err != nil {

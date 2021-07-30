@@ -79,13 +79,13 @@ run-test-codecov:
 	rm coverage.out
 
 nats-kafka.docker: $(goSrc)
-	CGO_ENABLED=0 go build -o $@ \
-		-tags timetzdata
+	CGO_ENABLED=0 go build -o $@ -tags timetzdata \
+		-ldflags "-X github.com/nats-io/nats-kafka/server/core.Version=$(VERSION)"
 
 .PHONY: docker
 docker: Dockerfile
 ifneq ($(dtag),)
-	docker build --tag natsio/nats-kafka:$(dtag) .
+	docker build --tag natsio/nats-kafka:$(dtag) --build-arg VERSION=$(dtag) .
 else
 	# Missing dtag, try again. Example: make docker dtag=1.2.3
 	exit 1
