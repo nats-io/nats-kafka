@@ -97,6 +97,7 @@ ifneq ($(ver),)
 	# Ensure 'docker buildx ls' shows correct platforms.
 	docker buildx build \
 		--tag natsio/nats-kafka:$(ver) --tag natsio/nats-kafka:latest \
+		--build-arg VERSION=$(ver) \
 		--platform linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64/v8 \
 		--push .
 else
