@@ -57,6 +57,10 @@ func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic s
 	sc.Net.DialTimeout = time.Duration(bc.ConnectTimeout) * time.Millisecond
 	sc.ClientID = "nats-kafka-producer"
 
+	if cc.Balancer == conf.LeastBytes {
+		sc.Producer.Partitioner = NewLeastBytesPartitioner
+	}
+
 	if cc.SASL.User != "" {
 		sc.Net.SASL.Enable = true
 		sc.Net.SASL.Handshake = true
