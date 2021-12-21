@@ -17,9 +17,10 @@
 package kafka
 
 import (
-	"github.com/Shopify/sarama"
-	"github.com/orcaman/concurrent-map"
 	"unsafe"
+
+	"github.com/Shopify/sarama"
+	cmap "github.com/orcaman/concurrent-map"
 )
 
 // A balancer (or partitioner in Sarama terms) is in charge of spreading messages across available partitions of a topic.

@@ -17,9 +17,10 @@
 package kafka
 
 import (
-	"github.com/orcaman/concurrent-map"
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	cmap "github.com/orcaman/concurrent-map"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFindPartitionWithMinBytes(t *testing.T) {
