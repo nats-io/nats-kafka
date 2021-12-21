@@ -13,3 +13,6 @@
 
 .vscode/*
 nats-kafka
+
+# IntelliJ and GoLand
+.idea
