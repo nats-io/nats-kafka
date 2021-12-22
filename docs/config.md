@@ -253,6 +253,10 @@ All connectors must specify Kafka connection properties, with a few optional set
 * `maxbytes` - (optional) used by a Kafka reader to set the maximum bytes for a read
 * `keytype` - (optional) defines the way keys are assigned to messages coming from NATS (see below)
 * `keyvalue` - (optional) extra data that may be used depending on the key type
+* `schemaregistryurl` - (optional) URL of the Kafka schema registry instance
+* `subjectname` - (exclusive with schemaregistryurl) Name of the subject in the schema registry to use for schema
+* `schemaversion` - (optional, exclusive with schemaregistryurl) Version of the schema to use from the registry, uses the latest if unspecified
+* `schematype` - (optional, exclusive with schemaregistryurl) Type of schema. Can be "avro", "json" or "protobuf", default is "avro"
 
 Available key types are:
 

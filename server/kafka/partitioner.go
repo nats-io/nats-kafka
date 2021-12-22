@@ -17,8 +17,6 @@
 package kafka
 
 import (
-	"unsafe"
-
 	"github.com/Shopify/sarama"
 	cmap "github.com/orcaman/concurrent-map"
 )
@@ -45,23 +43,23 @@ func (lbp *leastBytesPartitioner) RequiresConsistency() bool {
 func (lbp *leastBytesPartitioner) Partition(message *sarama.ProducerMessage, numPartitions int32) (int32, error) {
 	// if partition count has reduced, remove the old entries
 	for i := int32(lbp.byteCounters.Count() - 1); i >= numPartitions; i-- {
-		lbp.byteCounters.Remove(packIntInString(i))
+		lbp.byteCounters.Remove(packInt32InString(i))
 	}
 
 	// if the size has increased, add counters for new partitions
 	for i := int32(lbp.byteCounters.Count()); i < numPartitions; i++ {
-		lbp.byteCounters.Set(packIntInString(i), uint64(0))
+		lbp.byteCounters.Set(packInt32InString(i), uint64(0))
 	}
 
 	// find the entry in the byteCounters with min bytes
-	minIndex := findPartitionWithMinBytes(lbp.byteCounters)
+	minIndex := lbp.findPartitionWithMinBytes(lbp.byteCounters)
 	minBytes, _ := lbp.byteCounters.Get(minIndex)
 	lbp.byteCounters.Set(minIndex, minBytes.(uint64)+uint64(message.Key.Length())+uint64(message.Value.Length()))
 
-	return unpackIntFromString(minIndex), nil
+	return unpackInt32FromString(minIndex), nil
 }
 
-func findPartitionWithMinBytes(counters cmap.ConcurrentMap) string {
+func (lbp *leastBytesPartitioner) findPartitionWithMinBytes(counters cmap.ConcurrentMap) string {
 	var minPartition string
 	var minBytes uint64
 
@@ -74,25 +72,4 @@ func findPartitionWithMinBytes(counters cmap.ConcurrentMap) string {
 	}
 
 	return minPartition
-}
-
-func packIntInString(inputNum int32) string {
-	size := int(unsafe.Sizeof(inputNum))
-	buffer := make([]byte, size)
-	for i := 0; i < size; i++ {
-		buffer[i] = *(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(&inputNum)) + uintptr(i)))
-	}
-
-	return string(buffer)
-}
-
-func unpackIntFromString(inputString string) int32 {
-	outputValue := int32(0)
-	inputBytes := []byte(inputString)
-	size := len(inputBytes)
-	for i := 0; i < size; i++ {
-		*(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(&outputValue)) + uintptr(i))) = inputBytes[i]
-	}
-
-	return outputValue
 }

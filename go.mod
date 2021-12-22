@@ -4,12 +4,16 @@ go 1.17
 
 require (
 	github.com/Shopify/sarama v1.29.1
+	github.com/jhump/protoreflect v1.10.1
+	github.com/linkedin/goavro/v2 v2.10.1
 	github.com/nats-io/nats-server/v2 v2.2.6
 	github.com/nats-io/nats-streaming-server v0.22.0
 	github.com/nats-io/nats.go v1.11.0
 	github.com/nats-io/nuid v1.0.1
 	github.com/nats-io/stan.go v0.9.0
 	github.com/orcaman/concurrent-map v0.0.0-20210501183033-44dafcb38ecc
+	github.com/riferrei/srclient v0.4.0
+	github.com/santhosh-tekuri/jsonschema/v5 v5.0.0
 	github.com/stretchr/testify v1.7.0
 )
 
@@ -21,7 +25,8 @@ require (
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/fatih/color v1.12.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/snappy v0.0.3 // indirect
+	github.com/golang/protobuf v1.4.2 // indirect
+	github.com/golang/snappy v0.0.4 // indirect
 	github.com/hashicorp/go-hclog v0.16.1 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.0 // indirect
 	github.com/hashicorp/go-msgpack v1.1.5 // indirect
@@ -46,7 +51,10 @@ require (
 	go.etcd.io/bbolt v1.3.6 // indirect
 	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e // indirect
 	golang.org/x/net v0.0.0-20210614182718-04defd469f4e // indirect
+	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a // indirect
 	golang.org/x/sys v0.0.0-20210616094352-59db8d763f22 // indirect
 	golang.org/x/time v0.0.0-20210611083556-38a9dc6acbc6 // indirect
+	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 // indirect
+	google.golang.org/protobuf v1.25.1-0.20200805231151-a709e31e5d12 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )

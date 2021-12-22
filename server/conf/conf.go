@@ -223,4 +223,9 @@ type ConnectorConfig struct {
 
 	KeyType  string // what to do with the key, can be FixedKey, ...
 	KeyValue string // extra data for handling the key based on the keytype, may be ignored
+
+	SchemaRegistryURL string // Schema registry url for message schema validation
+	SubjectName       string // Name of the subject in the schema registry for the value
+	SchemaVersion     int    // Version of the value schema to use. Default is latest.
+	SchemaType        string // Can be avro, json, protobuf. Default is avro.
 }

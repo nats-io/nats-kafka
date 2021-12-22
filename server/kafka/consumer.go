@@ -19,11 +19,16 @@ package kafka
 import (
 	"context"
 	"crypto/tls"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/nats-io/nats-kafka/server/conf"
+	"github.com/riferrei/srclient"
+	"github.com/santhosh-tekuri/jsonschema/v5"
 )
 
 // Message represents a Kafka message.
@@ -61,6 +66,11 @@ type saramaConsumer struct {
 	consumeErrCh chan error
 
 	cancel context.CancelFunc
+
+	schemaRegistryOn     bool
+	schemaRegistryClient srclient.ISchemaRegistryClient
+	schemaType           srclient.SchemaType
+	pbDeserializer       pbDeserializer
 }
 
 // NewConsumer returns a new Kafka Consumer.
@@ -76,6 +86,7 @@ func NewConsumer(cc conf.ConnectorConfig, dialTimeout time.Duration) (Consumer, 
 		sc.Net.SASL.User = cc.SASL.User
 		sc.Net.SASL.Password = cc.SASL.Password
 	}
+
 	if sc.Net.SASL.Enable && cc.SASL.InsecureSkipVerify {
 		sc.Net.TLS.Enable = true
 		sc.Net.TLS.Config = &tls.Config{
@@ -99,6 +110,23 @@ func NewConsumer(cc conf.ConnectorConfig, dialTimeout time.Duration) (Consumer, 
 		saslOn:        sc.Net.SASL.Enable,
 		tlsOn:         sc.Net.TLS.Enable,
 		tlsSkipVerify: cc.SASL.InsecureSkipVerify,
+	}
+
+	// If schema registry url and subject name both are set, enable schema registry integration
+	if cc.SchemaRegistryURL != "" && cc.SubjectName != "" {
+		cons.schemaRegistryClient = srclient.CreateSchemaRegistryClient(cc.SchemaRegistryURL)
+
+		switch strings.ToUpper(cc.SchemaType) {
+		case srclient.Json.String():
+			cons.schemaType = srclient.Json
+		case srclient.Protobuf.String():
+			cons.schemaType = srclient.Protobuf
+			cons.pbDeserializer = newDeserializer()
+		default:
+			cons.schemaType = srclient.Avro
+		}
+
+		cons.schemaRegistryOn = true
 	}
 
 	if cons.groupMode {
@@ -165,14 +193,24 @@ func (c *saramaConsumer) Fetch(ctx context.Context) (Message, error) {
 		case <-ctx.Done():
 			return Message{}, ctx.Err()
 		case cmsg := <-c.fetchCh:
-			return Message{
-				Topic:     cmsg.Topic,
-				Partition: int(cmsg.Partition),
-				Offset:    cmsg.Offset,
+			var deserializedValue = cmsg.Value
+			var err error
+			if c.schemaRegistryOn {
+				deserializedValue, err = c.deserializePayload(cmsg.Value)
+			}
 
-				Key:   cmsg.Key,
-				Value: cmsg.Value,
-			}, nil
+			if err == nil {
+				return Message{
+					Topic:     cmsg.Topic,
+					Partition: int(cmsg.Partition),
+					Offset:    cmsg.Offset,
+
+					Key:   cmsg.Key,
+					Value: deserializedValue,
+				}, nil
+			} else {
+				return Message{}, err
+			}
 		case loopErr := <-c.consumeErrCh:
 			return Message{}, loopErr
 		}
@@ -182,14 +220,24 @@ func (c *saramaConsumer) Fetch(ctx context.Context) (Message, error) {
 	case <-ctx.Done():
 		return Message{}, ctx.Err()
 	case cmsg := <-c.pc.Messages():
-		return Message{
-			Topic:     cmsg.Topic,
-			Partition: int(cmsg.Partition),
-			Offset:    cmsg.Offset,
+		var deserializedValue = cmsg.Value
+		var err error
+		if c.schemaRegistryOn {
+			deserializedValue, err = c.deserializePayload(cmsg.Value)
+		}
 
-			Key:   cmsg.Key,
-			Value: cmsg.Value,
-		}, nil
+		if err == nil {
+			return Message{
+				Topic:     cmsg.Topic,
+				Partition: int(cmsg.Partition),
+				Offset:    cmsg.Offset,
+
+				Key:   cmsg.Key,
+				Value: deserializedValue,
+			}, nil
+		} else {
+			return Message{}, err
+		}
 	}
 }
 
@@ -260,4 +308,69 @@ func (c *saramaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sa
 	}
 
 	return nil
+}
+
+// Retrieve the schema of the message and deserialize it.
+func (c *saramaConsumer) deserializePayload(payload []byte) ([]byte, error) {
+	// first byte of the payload is 0
+	if payload[0] != byte(0) {
+		return nil, fmt.Errorf("failed to deserialize payload: magic byte is not 0")
+	}
+
+	// next 4 bytes contain the schema id
+	schemaID := binary.BigEndian.Uint32(payload[1:5])
+	schema, err := c.schemaRegistryClient.GetSchema(int(schemaID))
+	if err != nil {
+		return nil, err
+	}
+
+	var value []byte
+	switch c.schemaType {
+	case srclient.Avro:
+		value, err = c.deserializeAvro(schema, payload[5:])
+	case srclient.Json:
+		value, err = c.validateJsonSchema(schema, payload[5:])
+	case srclient.Protobuf:
+		value, err = c.pbDeserializer.Deserialize(schema, payload[5:])
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return value, nil
+}
+
+func (c *saramaConsumer) deserializeAvro(schema *srclient.Schema, cleanPayload []byte) ([]byte, error) {
+	codec := schema.Codec()
+	native, _, err := codec.NativeFromBinary(cleanPayload)
+	if err != nil {
+		return nil, fmt.Errorf("unable to deserailize avro: %w", err)
+	}
+	value, err := codec.TextualFromNative(nil, native)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert to json: %w", err)
+	}
+
+	return value, nil
+}
+
+func (c *saramaConsumer) validateJsonSchema(schema *srclient.Schema, cleanPayload []byte) ([]byte, error) {
+	jsc, err := jsonschema.CompileString("schema.json", schema.Schema())
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse json schema: %w", err)
+	}
+
+	var parsedMessage interface{}
+	err = json.Unmarshal(cleanPayload, &parsedMessage)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse json message: %w", err)
+	}
+
+	err = jsc.Validate(parsedMessage)
+	if err != nil {
+		return nil, fmt.Errorf("json message validation failed: %w", err)
+	}
+
+	return cleanPayload, nil
 }
