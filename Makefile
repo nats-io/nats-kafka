@@ -22,8 +22,8 @@ install-tools:
 
 .PHONY: lint
 lint:
-	[ -z $$(gofmt -s -l $(goSrc)) ]
-	[ -z $$(goimports -l $(goSrc)) ]
+	[ -z "$$(gofmt -s -l $(goSrc))" ]
+	[ -z "$$(goimports -l $(goSrc))" ]
 	misspell -locale US .
 	go vet ./...
 	staticcheck ./...
