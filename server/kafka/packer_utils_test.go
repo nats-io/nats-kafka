@@ -1,5 +1,5 @@
 /*
- * Copyright 2019-2021 The NATS Authors
+ * Copyright 2019-2022 The NATS Authors
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -19,19 +19,21 @@ package kafka
 import (
 	"testing"
 
-	cmap "github.com/orcaman/concurrent-map"
 	"github.com/stretchr/testify/require"
 )
 
-func TestFindPartitionWithMinBytes(t *testing.T) {
-	testBytes := cmap.New()
-	testBytes.Set("0", uint64(1000))
-	testBytes.Set("1", uint64(200))
-	testBytes.Set("2", uint64(300))
-	testBytes.Set("3", uint64(100))
-	testBytes.Set("4", uint64(600))
+func TestPackIntInString(t *testing.T) {
+	require.Equal(t, "\u0002\u0000\u0000\u0000", packInt32InString(2))
+}
 
-	partitioner := new(leastBytesPartitioner)
-	minPartition := partitioner.findPartitionWithMinBytes(testBytes)
-	require.Equal(t, "3", minPartition)
+func TestUnpackIntFromString(t *testing.T) {
+	require.Equal(t, 2, unpackIntFromString("\u0002\u0000\u0000\u0000"))
+}
+
+func TestPackInt32InString(t *testing.T) {
+	require.Equal(t, "\u0002\u0000\u0000\u0000", packInt32InString(2))
+}
+
+func TestUnpackInt32FromString(t *testing.T) {
+	require.Equal(t, int32(2), unpackInt32FromString("\u0002\u0000\u0000\u0000"))
 }

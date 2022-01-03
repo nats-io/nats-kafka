@@ -18,9 +18,13 @@ package kafka
 
 import (
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+
+	"github.com/riferrei/srclient"
 
 	"github.com/Shopify/sarama"
 	"github.com/nats-io/nats-kafka/server/conf"
@@ -39,6 +43,13 @@ type saramaProducer struct {
 	saslOn        bool
 	tlsOn         bool
 	tlsSkipVerify bool
+
+	schemaRegistryOn     bool
+	schemaRegistryClient srclient.ISchemaRegistryClient
+	subjectName          string
+	schemaVersion        int
+	schemaType           srclient.SchemaType
+	pbSerializer         pbSerializer
 }
 
 // IsTopicExist returns whether an error is caused by a topic already existing.
@@ -83,13 +94,34 @@ func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic s
 		return nil, err
 	}
 
-	return &saramaProducer{
+	prod := &saramaProducer{
 		sp:            sp,
 		topic:         topic,
 		saslOn:        sc.Net.SASL.Enable,
 		tlsOn:         sc.Net.TLS.Enable,
 		tlsSkipVerify: cc.SASL.InsecureSkipVerify,
-	}, nil
+	}
+
+	// If schema registry url and subject name both are set, enable schema registry integration
+	if cc.SchemaRegistryURL != "" && cc.SubjectName != "" {
+		prod.schemaRegistryClient = srclient.CreateSchemaRegistryClient(cc.SchemaRegistryURL)
+		prod.subjectName = cc.SubjectName
+		prod.schemaVersion = cc.SchemaVersion
+
+		switch strings.ToUpper(cc.SchemaType) {
+		case srclient.Json.String():
+			prod.schemaType = srclient.Json
+		case srclient.Protobuf.String():
+			prod.schemaType = srclient.Protobuf
+			prod.pbSerializer = newSerializer()
+		default:
+			prod.schemaType = srclient.Avro
+		}
+
+		prod.schemaRegistryOn = true
+	}
+
+	return prod, nil
 }
 
 // NetInfo returns information about whether SASL and TLS are enabled.
@@ -112,9 +144,19 @@ func (p *saramaProducer) NetInfo() string {
 
 // Write sends an outgoing message.
 func (p *saramaProducer) Write(m Message) error {
+	var valueEncoder sarama.Encoder
+	if p.schemaRegistryOn {
+		encodedValue, err := p.serializePayload(m.Value)
+		if err != nil {
+			return err
+		}
+		valueEncoder = sarama.ByteEncoder(encodedValue)
+	} else {
+		valueEncoder = sarama.StringEncoder(m.Value)
+	}
 	_, _, err := p.sp.SendMessage(&sarama.ProducerMessage{
 		Topic: p.topic,
-		Value: sarama.StringEncoder(m.Value),
+		Value: valueEncoder,
 		Key:   sarama.StringEncoder(m.Key),
 	})
 	return err
@@ -142,4 +184,59 @@ func (p *erroredProducer) Write(m Message) error {
 
 func (p *erroredProducer) Close() error {
 	return p.err
+}
+
+// Retrieve the schema from the schema registry and serialize the message. This method expects data in Avro JSON format
+// for cross language compatibility.
+func (p *saramaProducer) serializePayload(jsonPayload []byte) ([]byte, error) {
+	var schema *srclient.Schema
+	var err error
+	if p.schemaRegistryOn && p.schemaVersion != 0 {
+		schema, err = p.schemaRegistryClient.GetSchemaByVersion(p.subjectName, p.schemaVersion)
+	} else {
+		// Version is not set, fetch and use the latest
+		schema, err = p.schemaRegistryClient.GetLatestSchema(p.subjectName)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	schemaIDBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(schemaIDBytes, uint32(schema.ID()))
+
+	var valueBytes []byte
+	switch p.schemaType {
+	case srclient.Avro:
+		valueBytes, err = p.serializeAvro(schema, jsonPayload)
+	case srclient.Json:
+		valueBytes = jsonPayload
+	case srclient.Protobuf:
+		valueBytes, err = p.pbSerializer.Serialize(schema, jsonPayload)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	var recordValue []byte
+	recordValue = append(recordValue, byte(0))
+	recordValue = append(recordValue, schemaIDBytes...)
+	recordValue = append(recordValue, valueBytes...)
+
+	return recordValue, nil
+}
+
+func (p *saramaProducer) serializeAvro(schema *srclient.Schema, payload []byte) ([]byte, error) {
+	codec := schema.Codec()
+	native, _, err := codec.NativeFromTextual(payload)
+	if err != nil {
+		return nil, fmt.Errorf("unable to serialize json: %w", err)
+	}
+	value, err := codec.BinaryFromNative(nil, native)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert to avro: %w", err)
+	}
+
+	return value, err
 }
