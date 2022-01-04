@@ -32,6 +32,7 @@ func TestFindPartitionWithMinBytes(t *testing.T) {
 	testBytes.Set("4", uint64(600))
 
 	partitioner := new(leastBytesPartitioner)
-	minPartition := partitioner.findPartitionWithMinBytes(testBytes)
+	partitioner.byteCounters = testBytes
+	minPartition := partitioner.findPartitionWithMinBytes()
 	require.Equal(t, "3", minPartition)
 }

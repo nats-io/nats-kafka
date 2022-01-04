@@ -87,14 +87,13 @@ func (ps *protobufSerializer) buildMessageIndexes(schema *srclient.Schema, name 
 		i := int32(0)
 		for _, mType := range messageTypes {
 			if mType.GetName() == part {
-				indexArr := make([]byte, 4)
-				indexBuf := bytes.NewBuffer(indexArr)
-				err = binary.Write(indexBuf, binary.BigEndian, &i)
+				indexBuf := new(bytes.Buffer)
+				err = binary.Write(indexBuf, binary.BigEndian, i)
 				if err != nil {
 					return nil, err
 				}
 
-				indexes = append(indexes, indexArr...)
+				indexes = append(indexes, indexBuf.Bytes()...)
 				break
 			}
 			i++

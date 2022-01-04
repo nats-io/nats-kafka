@@ -16,47 +16,28 @@
 
 package kafka
 
-import "unsafe"
+import (
+	"bytes"
+	"encoding/binary"
+)
 
 // Utility functions to use with cmap.ConcurrentMap
-func packInt32InString(inputNum int32) string {
-	size := int(unsafe.Sizeof(inputNum))
-	buffer := make([]byte, size)
-	for i := 0; i < size; i++ {
-		buffer[i] = *(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(&inputNum)) + uintptr(i)))
+func packInt32InString(inputNum int32) (string, error) {
+	buffer := new(bytes.Buffer)
+	err := binary.Write(buffer, binary.BigEndian, inputNum)
+	if err != nil {
+		return "", err
 	}
 
-	return string(buffer)
+	return buffer.String(), nil
 }
 
-func packIntInString(inputNum int) string {
-	size := int(unsafe.Sizeof(inputNum))
-	buffer := make([]byte, size)
-	for i := 0; i < size; i++ {
-		buffer[i] = *(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(&inputNum)) + uintptr(i)))
+func unpackInt32FromString(inputString string) (int32, error) {
+	var outputValue int32
+	err := binary.Read(bytes.NewBufferString(inputString), binary.BigEndian, &outputValue)
+	if err != nil {
+		return 0, err
 	}
 
-	return string(buffer)
-}
-
-func unpackInt32FromString(inputString string) int32 {
-	outputValue := int32(0)
-	inputBytes := []byte(inputString)
-	size := len(inputBytes)
-	for i := 0; i < size; i++ {
-		*(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(&outputValue)) + uintptr(i))) = inputBytes[i]
-	}
-
-	return outputValue
-}
-
-func unpackIntFromString(inputString string) int {
-	outputValue := 0
-	inputBytes := []byte(inputString)
-	size := len(inputBytes)
-	for i := 0; i < size; i++ {
-		*(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(&outputValue)) + uintptr(i))) = inputBytes[i]
-	}
-
-	return outputValue
+	return outputValue, nil
 }

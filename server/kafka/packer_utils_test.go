@@ -19,21 +19,17 @@ package kafka
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestPackIntInString(t *testing.T) {
-	require.Equal(t, "\u0002\u0000\u0000\u0000", packInt32InString(2))
-}
-
-func TestUnpackIntFromString(t *testing.T) {
-	require.Equal(t, 2, unpackIntFromString("\u0002\u0000\u0000\u0000"))
-}
-
 func TestPackInt32InString(t *testing.T) {
-	require.Equal(t, "\u0002\u0000\u0000\u0000", packInt32InString(2))
+	op, err := packInt32InString(2)
+	assert.Nil(t, err)
+	assert.Equal(t, "\x00\x00\x00\x02", op)
 }
 
 func TestUnpackInt32FromString(t *testing.T) {
-	require.Equal(t, int32(2), unpackInt32FromString("\u0002\u0000\u0000\u0000"))
+	op, err := unpackInt32FromString("\x00\x00\x00\x02")
+	assert.Nil(t, err)
+	assert.Equal(t, int32(2), op)
 }

@@ -50,7 +50,7 @@ func newProtobufSchemaManager() protobufSchemaManager {
 }
 
 func (protobufSchemaManager) getFileDescriptor(schema *srclient.Schema) (*desc.FileDescriptor, error) {
-	packedSchemaID := packIntInString(schema.ID())
+	packedSchemaID := strconv.Itoa(schema.ID())
 	if !schemaManager.protobufSchemaIDtoFDMappings.Has(packedSchemaID) {
 		errorReporter := func(err protoparse.ErrorWithPos) error {
 			position := err.GetPosition()
@@ -58,7 +58,7 @@ func (protobufSchemaManager) getFileDescriptor(schema *srclient.Schema) (*desc.F
 		}
 
 		nanoTs := strconv.FormatInt(time.Now().UnixNano(), 10)
-		schemaFileName := strconv.Itoa(schema.ID()) + "-" + nanoTs + ".proto"
+		schemaFileName := packedSchemaID + "-" + nanoTs + ".proto"
 		schemaFile, err := os.CreateTemp("", schemaFileName)
 		if err != nil {
 			return nil, err

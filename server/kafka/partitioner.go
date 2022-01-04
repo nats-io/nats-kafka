@@ -17,6 +17,8 @@
 package kafka
 
 import (
+	"fmt"
+
 	"github.com/Shopify/sarama"
 	cmap "github.com/orcaman/concurrent-map"
 )
@@ -43,27 +45,38 @@ func (lbp *leastBytesPartitioner) RequiresConsistency() bool {
 func (lbp *leastBytesPartitioner) Partition(message *sarama.ProducerMessage, numPartitions int32) (int32, error) {
 	// if partition count has reduced, remove the old entries
 	for i := int32(lbp.byteCounters.Count() - 1); i >= numPartitions; i-- {
-		lbp.byteCounters.Remove(packInt32InString(i))
+		index, err := packInt32InString(i)
+		if err != nil {
+			return 0, fmt.Errorf("failed in removing count for partition %d: %w", i, err)
+		}
+		lbp.byteCounters.Remove(index)
 	}
 
 	// if the size has increased, add counters for new partitions
 	for i := int32(lbp.byteCounters.Count()); i < numPartitions; i++ {
-		lbp.byteCounters.Set(packInt32InString(i), uint64(0))
+		index, err := packInt32InString(i)
+		if err != nil {
+			return 0, fmt.Errorf("failed in adding count for partition %d: %w", i, err)
+		}
+		lbp.byteCounters.Set(index, uint64(0))
 	}
 
 	// find the entry in the byteCounters with min bytes
-	minIndex := lbp.findPartitionWithMinBytes(lbp.byteCounters)
+	minIndex := lbp.findPartitionWithMinBytes()
 	minBytes, _ := lbp.byteCounters.Get(minIndex)
 	lbp.byteCounters.Set(minIndex, minBytes.(uint64)+uint64(message.Key.Length())+uint64(message.Value.Length()))
-
-	return unpackInt32FromString(minIndex), nil
+	minIndexStr, err := unpackInt32FromString(minIndex)
+	if err != nil {
+		return 0, err
+	}
+	return minIndexStr, nil
 }
 
-func (lbp *leastBytesPartitioner) findPartitionWithMinBytes(counters cmap.ConcurrentMap) string {
+func (lbp *leastBytesPartitioner) findPartitionWithMinBytes() string {
 	var minPartition string
 	var minBytes uint64
 
-	for entry := range counters.IterBuffered() {
+	for entry := range lbp.byteCounters.IterBuffered() {
 		curBytes, _ := entry.Val.(uint64)
 		if minBytes == 0 || curBytes < minBytes {
 			minBytes = curBytes
