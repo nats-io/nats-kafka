@@ -20,6 +20,7 @@ JetStream and Kafka topics.
 * A single configuration file, with support for reload
 * Optional SSL to/from Kafka, NATS, NATS Streaming, and JetStream
 * HTTP/HTTPS-based monitoring endpoints for health or statistics
+* Support for Confluent schema registry and compatible implementations with Avro, JSON Schema and Protobuf.
 
 ## Overview
 
@@ -59,6 +60,7 @@ monitoring.
 * [NATS Streaming](https://github.com/nats-io/nats-streaming-server)
 * [JetStream](https://docs.nats.io/jetstream/jetstream)
 * [Kafka](https://kafka.apache.org/)
+* [Confluent Schema Registry](https://docs.confluent.io/platform/current/schema-registry/index.html)
 
 [License-Url]: https://www.apache.org/licenses/LICENSE-2.0
 [License-Image]: https://img.shields.io/badge/License-Apache2-blue.svg
