@@ -36,9 +36,9 @@ type protobufDeserializer struct {
 }
 
 type protobufWrapper struct {
-	Schema           *srclient.Schema
-	MessageTypeIndex []int64
-	CleanPayload     []byte
+	Schema             *srclient.Schema
+	MessageTypeIndexes []int64
+	CleanPayload       []byte
 }
 
 func newDeserializer() pbDeserializer {
@@ -103,9 +103,9 @@ func (pd *protobufDeserializer) decodeProtobufStructures(schema *srclient.Schema
 	}
 
 	return &protobufWrapper{
-		Schema:           schema,
-		MessageTypeIndex: messageTypeIDs,
-		CleanPayload:     remainingPayload,
+		Schema:             schema,
+		MessageTypeIndexes: messageTypeIDs,
+		CleanPayload:       remainingPayload,
 	}, nil
 }
 
@@ -116,12 +116,12 @@ func (pd *protobufDeserializer) getMessageDescriptorFromMessage(wrapper *protobu
 	}
 
 	// Traverse through the message types until we find the right type as pointed to by message array index. This array
-	// of ints with each type indexed level by level.
+	// of varints with each type indexed level by level.
 	messageTypes := fd.GetMessageTypes()
 	messageTypesLen := int64(len(messageTypes))
 	var messageDescriptor *desc.MessageDescriptor
 
-	for _, i := range wrapper.MessageTypeIndex {
+	for _, i := range wrapper.MessageTypeIndexes {
 		if i > messageTypesLen {
 			// This should never happen
 			return nil, fmt.Errorf("failed to decode message type: message index is larger than message types array length")
