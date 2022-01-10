@@ -208,9 +208,8 @@ func (c *saramaConsumer) Fetch(ctx context.Context) (Message, error) {
 					Key:   cmsg.Key,
 					Value: deserializedValue,
 				}, nil
-			} else {
-				return Message{}, err
 			}
+			return Message{}, err
 		case loopErr := <-c.consumeErrCh:
 			return Message{}, loopErr
 		}
@@ -235,9 +234,8 @@ func (c *saramaConsumer) Fetch(ctx context.Context) (Message, error) {
 				Key:   cmsg.Key,
 				Value: deserializedValue,
 			}, nil
-		} else {
-			return Message{}, err
 		}
+		return Message{}, err
 	}
 }
 
@@ -329,7 +327,7 @@ func (c *saramaConsumer) deserializePayload(payload []byte) ([]byte, error) {
 	case srclient.Avro:
 		value, err = c.deserializeAvro(schema, payload[5:])
 	case srclient.Json:
-		value, err = c.validateJsonSchema(schema, payload[5:])
+		value, err = c.validateJSONSchema(schema, payload[5:])
 	case srclient.Protobuf:
 		value, err = c.pbDeserializer.Deserialize(schema, payload[5:])
 	}
@@ -355,7 +353,7 @@ func (c *saramaConsumer) deserializeAvro(schema *srclient.Schema, cleanPayload [
 	return value, nil
 }
 
-func (c *saramaConsumer) validateJsonSchema(schema *srclient.Schema, cleanPayload []byte) ([]byte, error) {
+func (c *saramaConsumer) validateJSONSchema(schema *srclient.Schema, cleanPayload []byte) ([]byte, error) {
 	jsc, err := jsonschema.CompileString("schema.json", schema.Schema())
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse json schema: %w", err)

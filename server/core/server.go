@@ -31,6 +31,7 @@ import (
 	stan "github.com/nats-io/stan.go"
 )
 
+// Version specifies the command version. This should be set at compile time.
 var Version = "0.0-dev"
 
 // NATSKafkaBridge is the core structure for the server.

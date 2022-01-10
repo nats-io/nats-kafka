@@ -664,10 +664,10 @@ func TestNATSConnectorError(t *testing.T) {
 	n1 := len(tbs.Bridge.reconnect)
 	tbs.Bridge.reconnectLock.Unlock()
 
-	tbs.Bridge.ConnectorError(tbs.Bridge.connectors[0], fmt.Errorf("error!"))
+	tbs.Bridge.ConnectorError(tbs.Bridge.connectors[0], fmt.Errorf("error"))
 
 	// Should be a no-op.
-	tbs.Bridge.ConnectorError(tbs.Bridge.connectors[0], fmt.Errorf("another error!"))
+	tbs.Bridge.ConnectorError(tbs.Bridge.connectors[0], fmt.Errorf("another error"))
 
 	tbs.Bridge.reconnectLock.Lock()
 	n2 := len(tbs.Bridge.reconnect)

@@ -939,7 +939,7 @@ func TestSTANConnectionLostClientIDRegistered(t *testing.T) {
 	tbs.Bridge.config.ReconnectInterval = 125
 	sc1 := tbs.Bridge.stan
 	tbs.Bridge.reconnectLock.Unlock()
-	tbs.Bridge.stanConnectionLost(sc1, fmt.Errorf("lost connection!"))
+	tbs.Bridge.stanConnectionLost(sc1, fmt.Errorf("lost connection"))
 
 	time.Sleep(250 * time.Millisecond)
 
@@ -968,7 +968,7 @@ func TestSTANConnectionLost(t *testing.T) {
 	sc1 := tbs.Bridge.stan
 	tbs.Bridge.config.STAN.ClientID += "new"
 	tbs.Bridge.reconnectLock.Unlock()
-	tbs.Bridge.stanConnectionLost(sc1, fmt.Errorf("lost connection!"))
+	tbs.Bridge.stanConnectionLost(sc1, fmt.Errorf("lost connection"))
 
 	time.Sleep(250 * time.Millisecond)
 
