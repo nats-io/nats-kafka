@@ -17,7 +17,6 @@
 package kafka
 
 import (
-	"bytes"
 	"encoding/binary"
 	"strings"
 	"unsafe"
@@ -54,7 +53,7 @@ func (ps *protobufSerializer) Serialize(schema *srclient.Schema, payload []byte)
 		return nil, err
 	}
 
-	indexBytes, err := ps.buildMessageIndexes(schema, messageDescriptor.GetFullyQualifiedName())
+	indexLenBytes, indexBytes, err := ps.buildMessageIndexes(schema, messageDescriptor.GetFullyQualifiedName())
 	if err != nil {
 		return nil, err
 	}
@@ -64,8 +63,8 @@ func (ps *protobufSerializer) Serialize(schema *srclient.Schema, payload []byte)
 		return nil, err
 	}
 
-	serializedPayload := make([]byte, len(indexBytes)+len(protoBytes)+16) // 16 extra bytes for the array length
-	binary.PutVarint(serializedPayload, int64(len(indexBytes)/int(unsafe.Sizeof(int32(0)))))
+	var serializedPayload []byte
+	serializedPayload = append(serializedPayload, indexLenBytes...)
 	if len(indexBytes) > 0 {
 		serializedPayload = append(serializedPayload, indexBytes...)
 	}
@@ -73,32 +72,37 @@ func (ps *protobufSerializer) Serialize(schema *srclient.Schema, payload []byte)
 	return serializedPayload, nil
 }
 
-func (ps *protobufSerializer) buildMessageIndexes(schema *srclient.Schema, name string) ([]byte, error) {
+func (ps *protobufSerializer) buildMessageIndexes(schema *srclient.Schema, name string) ([]byte, []byte, error) {
 	fileDescriptor, err := schemaManager.getFileDescriptor(schema)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	parts := strings.Split(name, ".")
 	messageTypes := fileDescriptor.GetMessageTypes()
 
-	var indexes []byte
+	var messageIndex []byte
+	indexesCount := int64(0)
 	for _, part := range parts {
-		i := int32(0)
+		i := int64(0)
 		for _, mType := range messageTypes {
 			if mType.GetName() == part {
-				indexBuf := new(bytes.Buffer)
-				err = binary.Write(indexBuf, binary.BigEndian, i)
+				indexBuf := make([]byte, unsafe.Sizeof(i))
+				bytesLen := int64(binary.PutVarint(indexBuf, i))
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 
-				indexes = append(indexes, indexBuf.Bytes()...)
+				messageIndex = append(messageIndex, indexBuf[:bytesLen]...)
+				indexesCount++
 				break
 			}
 			i++
 		}
 	}
 
-	return indexes, nil
+	indexCountBytes := make([]byte, unsafe.Sizeof(indexesCount))
+	indexCountBytesSize := binary.PutVarint(indexCountBytes, indexesCount)
+
+	return indexCountBytes[:indexCountBytesSize], messageIndex, nil
 }

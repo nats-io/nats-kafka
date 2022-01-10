@@ -58,16 +58,22 @@ func TestSerializePayloadJson(t *testing.T) {
 func TestSerializePayloadProtobuf(t *testing.T) {
 	server := newMockSchemaServer(t)
 	defer server.close()
+	srClient := srclient.CreateSchemaRegistryClient(server.getServerURL())
 
 	producer := &saramaProducer{
 		schemaRegistryOn:     true,
-		schemaRegistryClient: srclient.CreateSchemaRegistryClient(server.getServerURL()),
+		schemaRegistryClient: srClient,
 		subjectName:          protobufSubjectName,
 		schemaVersion:        protobufSchemaVersion,
 		schemaType:           srclient.Protobuf,
 		pbSerializer:         newSerializer(),
 	}
+	schema, err := srClient.GetSchema(protobufSchemaID)
+	assert.Nil(t, err)
 
-	_, err := producer.serializePayload([]byte(protobufMessage))
+	message, err := producer.serializePayload([]byte(protobufMessage))
+	assert.Nil(t, err)
+
+	_, err = newDeserializer().Deserialize(schema, message[5:])
 	assert.Nil(t, err)
 }
