@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Shopify/sarama"
+
 	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nats-kafka/server/kafka"
 	gnatsserver "github.com/nats-io/nats-server/v2/server"
@@ -502,8 +504,45 @@ func (tbs *TestEnv) SendMessageToKafka(topic string, data []byte, waitMillis int
 	return nil
 }
 
+func (tbs *TestEnv) SendMessageWithHeadersToKafka(topic string, data []byte, kHeaders []sarama.RecordHeader, waitMillis int32) error {
+	cc := conf.ConnectorConfig{
+		Brokers:   []string{tbs.KafkaHostPort},
+		Partition: 0,
+	}
+	if tbs.useSASL {
+		cc.SASL = conf.SASL{
+			User:     tbs.user,
+			Password: tbs.password,
+		}
+	}
+	if tbs.useTLS {
+		cc.TLS = conf.TLSConf{
+			Cert: clientCert,
+			Key:  clientKey,
+			Root: caFile,
+		}
+	}
+
+	bc := conf.NATSKafkaBridgeConfig{ConnectTimeout: int(waitMillis)}
+	prod, err := kafka.NewProducer(cc, bc, topic)
+	if err != nil {
+		return err
+	}
+	defer prod.Close()
+
+	err = prod.Write(kafka.Message{
+		Value:   []byte(data),
+		Headers: kHeaders,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // CreateReader creates a new reader
 func (tbs *TestEnv) CreateReader(topic string, waitMillis int32) kafka.Consumer {
+
 	cc := conf.ConnectorConfig{
 		Brokers: []string{tbs.KafkaHostPort},
 		Topic:   topic,
@@ -527,34 +566,36 @@ func (tbs *TestEnv) CreateReader(topic string, waitMillis int32) kafka.Consumer 
 	}
 
 	dialTimeout := time.Duration(waitMillis) * time.Millisecond
+
 	cons, err := kafka.NewConsumer(cc, dialTimeout)
 	if err != nil {
 		log.Println("failed to create consumer:", err)
 		return nil
 	}
+
 	return cons
 }
 
 // GetMessageFromKafka uses an extra connection to talk to kafka, bypassing the bridge
-func (tbs *TestEnv) GetMessageFromKafka(reader kafka.Consumer, waitMillis int32) ([]byte, []byte, error) {
+func (tbs *TestEnv) GetMessageFromKafka(reader kafka.Consumer, waitMillis int32) ([]byte, []byte, []sarama.RecordHeader, error) {
 	context, cancel := context.WithTimeout(context.Background(), time.Duration(waitMillis)*time.Millisecond)
 	defer cancel()
 
 	m, err := reader.Fetch(context)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if reader.GroupMode() {
 		if err := reader.Commit(context, m); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 
 	if err != nil || m.Value == nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	return m.Key, m.Value, nil
+	return m.Key, m.Value, m.Headers, nil
 }
 
 func (tbs *TestEnv) CreateTopic(topic string, waitMillis int32) error {
@@ -644,6 +685,45 @@ func (tbs *TestEnv) WaitForIt(requestCount int64, done chan string) string {
 	}
 
 	return received
+}
+
+func (tbs *TestEnv) WaitForNatsMsg(requestCount int64, done chan *nats.Msg) nats.Msg {
+	timeout := time.Duration(5000) * time.Millisecond // 5 second timeout for tests
+	stop := time.Now().Add(timeout)
+	timer := time.NewTimer(timeout)
+	requestsOk := make(chan bool)
+
+	// Timeout the done channel
+	nMsg := nats.NewMsg("")
+	go func() {
+		<-timer.C
+		done <- nMsg
+	}()
+
+	ticker := time.NewTicker(50 * time.Millisecond)
+	go func() {
+		for t := range ticker.C {
+			if t.After(stop) {
+				requestsOk <- false
+				break
+			}
+
+			if tbs.Bridge.SafeStats().RequestCount >= requestCount {
+				requestsOk <- true
+				break
+			}
+		}
+		ticker.Stop()
+	}()
+
+	received := <-done
+	ok := <-requestsOk
+
+	if !ok {
+		received = nMsg
+	}
+
+	return *received
 }
 
 func (tbs *TestEnv) WaitForRequests(requestCount int64) {

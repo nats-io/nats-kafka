@@ -52,7 +52,7 @@ func TestSimpleSendOnJetStreamReceiveOnKafka(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	_, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 
@@ -100,7 +100,7 @@ func TestSimpleSASLSendOnJetStreamReceiveOnKafka(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	_, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 
@@ -152,10 +152,10 @@ func TestJetStreamQueueStartAtPosition(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	_, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg2, string(data))
-	_, _, err = tbs.GetMessageFromKafka(reader, 2000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 2000)
 	require.Error(t, err)
 
 	stats := tbs.Bridge.SafeStats()
@@ -205,10 +205,10 @@ func TestSASLJetStreamQueueStartAtPosition(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	_, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg2, string(data))
-	_, _, err = tbs.GetMessageFromKafka(reader, 2000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 2000)
 	require.Error(t, err)
 
 	stats := tbs.Bridge.SafeStats()
@@ -254,16 +254,16 @@ func TestJetStreamQueueDeliverLatest(t *testing.T) {
 	defer reader.Close()
 
 	// Should get the last one
-	_, _, err = tbs.GetMessageFromKafka(reader, 5000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 
 	_, err = tbs.JS.Publish(subject, []byte(msg))
 	require.NoError(t, err)
 
 	// Should receive 1 message we just sent
-	_, _, err = tbs.GetMessageFromKafka(reader, 5000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
-	_, _, err = tbs.GetMessageFromKafka(reader, 3000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 3000)
 	require.Error(t, err)
 
 	stats := tbs.Bridge.SafeStats()
@@ -313,16 +313,16 @@ func TestJetStreamSASLQueueDeliverLatest(t *testing.T) {
 	defer reader.Close()
 
 	// Should get the last one
-	_, _, err = tbs.GetMessageFromKafka(reader, 5000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 
 	_, err = tbs.JS.Publish(subject, []byte(msg))
 	require.NoError(t, err)
 
 	// Should receive 1 message we just sent
-	_, _, err = tbs.GetMessageFromKafka(reader, 5000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
-	_, _, err = tbs.GetMessageFromKafka(reader, 3000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 3000)
 	require.Error(t, err)
 
 	stats := tbs.Bridge.SafeStats()
@@ -375,9 +375,9 @@ func TestJetStreamQueueStartAtTime(t *testing.T) {
 	defer reader.Close()
 
 	// Should only get the one we just sent
-	_, _, err = tbs.GetMessageFromKafka(reader, 5000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
-	_, _, err = tbs.GetMessageFromKafka(reader, 3000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 3000)
 	require.Error(t, err)
 
 	stats := tbs.Bridge.SafeStats()
@@ -434,9 +434,9 @@ func TestJetStreamSASLQueueStartAtTime(t *testing.T) {
 	defer reader.Close()
 
 	// Should only get the one we just sent
-	_, _, err = tbs.GetMessageFromKafka(reader, 5000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
-	_, _, err = tbs.GetMessageFromKafka(reader, 3000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 3000)
 	require.Error(t, err)
 
 	stats := tbs.Bridge.SafeStats()
@@ -500,13 +500,13 @@ func TestJetStreamQueueDurableSubscriber(t *testing.T) {
 	defer reader.Close()
 
 	// should get three, even though we stopped the bridge
-	_, _, err = tbs.GetMessageFromKafka(reader, 5000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
-	_, _, err = tbs.GetMessageFromKafka(reader, 5000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
-	_, _, err = tbs.GetMessageFromKafka(reader, 5000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
-	_, _, err = tbs.GetMessageFromKafka(reader, 2000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 2000)
 	require.Error(t, err)
 
 	tbs.WaitForRequests(2) // get the later requests through the system
@@ -577,13 +577,13 @@ func TestJetStreamSASLQueueDurableSubscriber(t *testing.T) {
 	defer reader.Close()
 
 	// should get three, even though we stopped the bridge
-	_, _, err = tbs.GetMessageFromKafka(reader, 5000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
-	_, _, err = tbs.GetMessageFromKafka(reader, 5000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
-	_, _, err = tbs.GetMessageFromKafka(reader, 5000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
-	_, _, err = tbs.GetMessageFromKafka(reader, 2000)
+	_, _, _, err = tbs.GetMessageFromKafka(reader, 2000)
 	require.Error(t, err)
 
 	tbs.WaitForRequests(2) // get the later requests through the system
@@ -618,7 +618,7 @@ func TestSimpleSendOnJetStreamReceiveOnKafkaWithTLS(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	_, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 }
@@ -648,7 +648,7 @@ func TestFixedKeyFromJetStream(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, "alpha", string(key))
@@ -683,7 +683,7 @@ func TestSASLFixedKeyFromJetStream(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, "alpha", string(key))
@@ -713,7 +713,7 @@ func TestSubjectKeyFromJetStream(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, subject, string(key))
@@ -747,7 +747,7 @@ func TestSASLSubjectKeyFromJetStream(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, subject, string(key))
@@ -778,7 +778,7 @@ func TestSubjectRegexKeyFromJetStream(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, "alpha", string(key))
@@ -813,7 +813,7 @@ func TestSASLSubjectRegexKeyFromJetStream(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, "alpha", string(key))
@@ -845,7 +845,7 @@ func TestReplyKeyFromJetStream(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, durable, string(key))
@@ -881,7 +881,7 @@ func TestSASLReplyKeyFromJetStream(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, durable, string(key))

@@ -155,9 +155,10 @@ func (p *saramaProducer) Write(m Message) error {
 		valueEncoder = sarama.StringEncoder(m.Value)
 	}
 	_, _, err := p.sp.SendMessage(&sarama.ProducerMessage{
-		Topic: p.topic,
-		Value: valueEncoder,
-		Key:   sarama.StringEncoder(m.Key),
+		Topic:   p.topic,
+		Value:   valueEncoder,
+		Key:     sarama.StringEncoder(m.Key),
+		Headers: m.Headers,
 	})
 	return err
 }

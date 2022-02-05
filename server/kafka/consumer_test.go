@@ -24,6 +24,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Shopify/sarama"
+	"github.com/stretchr/testify/require"
+
 	"github.com/jhump/protoreflect/desc/protoparse"
 	"github.com/jhump/protoreflect/dynamic"
 
@@ -112,6 +115,35 @@ func TestDeserializePayloadProtobuf(t *testing.T) {
 
 	_, err = consumer.deserializePayload(payload)
 	assert.Nil(t, err)
+}
+
+func TestConvertToMsgHeaderOK(t *testing.T) {
+
+	var consumerHdrs = make([]*sarama.RecordHeader, 3)
+	for i, element := range consumerHdrs {
+		keyString := fmt.Sprintf("key-%d", i)
+		valueString := fmt.Sprintf("value-%d", i)
+		var entry = sarama.RecordHeader{
+			Key:   []byte(keyString),
+			Value: []byte(valueString),
+		}
+		element = &entry
+		consumerHdrs[i] = element
+	}
+
+	sc := saramaConsumer{}
+	var messageHeaders = sc.convertToMessageHeaders(consumerHdrs)
+	require.Equal(t, len(messageHeaders), len(consumerHdrs))
+	for i, element := range messageHeaders {
+		require.Equal(t, string(consumerHdrs[i].Value), string(element.Value))
+		require.Equal(t, string(consumerHdrs[i].Key), string(element.Key))
+	}
+}
+func TestConvertToMsgHeaderNull(t *testing.T) {
+
+	sc := saramaConsumer{}
+	var messageHeaders = sc.convertToMessageHeaders(nil)
+	require.Equal(t, []sarama.RecordHeader([]sarama.RecordHeader{}), messageHeaders)
 }
 
 func createProtobufMessage() ([]byte, error) {

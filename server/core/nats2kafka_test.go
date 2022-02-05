@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nats-io/nats.go"
+
 	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nuid"
 	"github.com/stretchr/testify/require"
@@ -50,7 +52,7 @@ func TestSimpleSendOnNatsReceiveOnKafka(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	_, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 
@@ -98,7 +100,7 @@ func TestSimpleSASLSendOnNatsReceiveOnKafka(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	_, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 
@@ -135,7 +137,7 @@ func TestWildcardSendRecieveOnKafka(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	_, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 }
@@ -166,7 +168,7 @@ func TestWildcardSASLSendRecieveOnKafka(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	_, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 }
@@ -195,7 +197,7 @@ func TestSendOnNatsQueueReceiveOnKafka(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	_, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 
@@ -242,7 +244,7 @@ func TestSASLSendOnNatsQueueReceiveOnKafka(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	_, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 
@@ -281,9 +283,46 @@ func TestSimpleSendOnNatsReceiveOnKafkaWithTLS(t *testing.T) {
 	require.NotNil(t, reader)
 	defer reader.Close()
 
-	_, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	_, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
+}
+
+func TestSimpleSendOnNatsReceiveOnKafkaWithHeader(t *testing.T) {
+	subject := "test"
+	topic := nuid.Next()
+	msg := nats.NewMsg(subject)
+	msg.Header.Add("David Copper", "Field")
+	msg.Data = []byte("HELLO MAGIC")
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "NATSToKafka",
+			Subject: subject,
+			Topic:   topic,
+		},
+	}
+
+	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	err = tbs.NC.PublishMsg(msg)
+	require.NoError(t, err)
+
+	reader := tbs.CreateReader(topic, 5000)
+	require.NotNil(t, reader)
+	defer reader.Close()
+
+	_, data, hdr, err := tbs.GetMessageFromKafka(reader, 5000)
+	require.NoError(t, err)
+	require.Equal(t, string(msg.Data), string(data))
+
+	require.Equal(t, len(hdr), len(msg.Header))
+	for key, element := range hdr {
+		require.Equal(t, string(element.Value), msg.Header.Get(string(element.Key)))
+		key++
+	}
 }
 
 func TestFixedKeyFromNATS(t *testing.T) {
@@ -311,7 +350,7 @@ func TestFixedKeyFromNATS(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, "alpha", string(key))
@@ -346,7 +385,7 @@ func TestSASLFixedKeyFromNATS(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, "alpha", string(key))
@@ -376,7 +415,7 @@ func TestSubjectKeyFromNATS(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, subject, string(key))
@@ -410,7 +449,7 @@ func TestSASLSubjectKeyFromNATS(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, subject, string(key))
@@ -440,7 +479,7 @@ func TestReplyKeyFromNATS(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, "beta", string(key))
@@ -474,7 +513,7 @@ func TestSASLReplyKeyFromNATS(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, "beta", string(key))
@@ -505,7 +544,7 @@ func TestSubjectRegexKeyFromNATS(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, "alpha", string(key))
@@ -540,7 +579,7 @@ func TestSASLSubjectRegexKeyFromNATS(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, "alpha", string(key))
@@ -571,7 +610,7 @@ func TestReplyRegexKeyFromNATS(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, "gamma", string(key))
@@ -606,7 +645,7 @@ func TestSASLReplyRegexKeyFromNATS(t *testing.T) {
 	reader := tbs.CreateReader(topic, 5000)
 	defer reader.Close()
 
-	key, data, err := tbs.GetMessageFromKafka(reader, 5000)
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 	require.Equal(t, msg, string(data))
 	require.Equal(t, "gamma", string(key))

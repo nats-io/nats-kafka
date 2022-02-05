@@ -37,8 +37,9 @@ type Message struct {
 	Partition int
 	Offset    int64
 
-	Key   []byte
-	Value []byte
+	Key     []byte
+	Value   []byte
+	Headers []sarama.RecordHeader
 }
 
 // Consumer represents a Kafka Consumer.
@@ -188,6 +189,7 @@ func (c *saramaConsumer) NetInfo() string {
 // Fetch reads an incoming message. In group mode, the message is outstanding
 // until committed.
 func (c *saramaConsumer) Fetch(ctx context.Context) (Message, error) {
+
 	if c.groupMode {
 		select {
 		case <-ctx.Done():
@@ -205,8 +207,9 @@ func (c *saramaConsumer) Fetch(ctx context.Context) (Message, error) {
 					Partition: int(cmsg.Partition),
 					Offset:    cmsg.Offset,
 
-					Key:   cmsg.Key,
-					Value: deserializedValue,
+					Key:     cmsg.Key,
+					Value:   deserializedValue,
+					Headers: c.convertToMessageHeaders(cmsg.Headers),
 				}, nil
 			}
 			return Message{}, err
@@ -231,8 +234,9 @@ func (c *saramaConsumer) Fetch(ctx context.Context) (Message, error) {
 				Partition: int(cmsg.Partition),
 				Offset:    cmsg.Offset,
 
-				Key:   cmsg.Key,
-				Value: deserializedValue,
+				Key:     cmsg.Key,
+				Value:   deserializedValue,
+				Headers: c.convertToMessageHeaders(cmsg.Headers),
 			}, nil
 		}
 		return Message{}, err
@@ -371,4 +375,12 @@ func (c *saramaConsumer) validateJSONSchema(schema *srclient.Schema, cleanPayloa
 	}
 
 	return cleanPayload, nil
+}
+
+func (c *saramaConsumer) convertToMessageHeaders(consumerHeaders []*sarama.RecordHeader) []sarama.RecordHeader {
+	var msgHeaders = make([]sarama.RecordHeader, len(consumerHeaders))
+	for i, element := range consumerHeaders {
+		msgHeaders[i] = *element
+	}
+	return msgHeaders
 }
