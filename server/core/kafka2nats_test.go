@@ -16,8 +16,11 @@
 package core
 
 import (
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/Shopify/sarama"
 
 	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nats.go"
@@ -67,6 +70,69 @@ func TestSimpleSendOnKafkaReceiveOnNATS(t *testing.T) {
 	require.Equal(t, int64(1), connStats.Connects)
 	require.Equal(t, int64(0), connStats.Disconnects)
 	require.True(t, connStats.Connected)
+}
+
+func TestSimpleSendOnKafkaReceiveOnNATSWithHeader(t *testing.T) {
+	subject := nuid.Next()
+	topic := nuid.Next()
+	msg := "hello world"
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "KafkaToNATS",
+			Subject: subject,
+			Topic:   topic,
+		},
+	}
+
+	var kHdrs = make([]sarama.RecordHeader, 3)
+	i := 0
+	for i < len(kHdrs) {
+		keyString := fmt.Sprintf("key-%d", i)
+		valueString := fmt.Sprintf("value-%d", i)
+		kHdrs[i].Key = []byte(keyString)
+		kHdrs[i].Value = []byte(valueString)
+		i++
+	}
+
+	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	tbs.Bridge.checkConnections()
+
+	done := make(chan *nats.Msg)
+
+	sub, err := tbs.NC.Subscribe(subject, func(msg *nats.Msg) {
+		done <- msg
+	})
+	require.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	err = tbs.SendMessageWithHeadersToKafka(topic, []byte(msg), kHdrs, 5000)
+	require.NoError(t, err)
+
+	received := tbs.WaitForNatsMsg(1, done)
+	require.Equal(t, msg, string(received.Data))
+
+	stats := tbs.Bridge.SafeStats()
+	connStats := stats.Connections[0]
+	require.Equal(t, int64(1), connStats.MessagesIn)
+	require.Equal(t, int64(1), connStats.MessagesOut)
+	require.Equal(t, int64(len([]byte(msg))), connStats.BytesIn)
+	require.Equal(t, int64(len([]byte(msg))), connStats.BytesOut)
+	require.Equal(t, int64(1), connStats.Connects)
+	require.Equal(t, int64(0), connStats.Disconnects)
+	require.True(t, connStats.Connected)
+
+	i = 0
+	require.Equal(t, 3, len(received.Header))
+	for nKey, nValue := range received.Header {
+		//fmt.Printf("%s->%s", nKey, nValue)
+		require.Equal(t, string(kHdrs[i].Key), nKey)
+		require.Equal(t, string(kHdrs[i].Value), nValue[0])
+		i++
+	}
 }
 
 func TestSimpleSASLSendOnKafkaReceiveOnNATS(t *testing.T) {

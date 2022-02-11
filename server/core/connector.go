@@ -27,6 +27,8 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/Shopify/sarama"
+
 	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nats-kafka/server/kafka"
 	"github.com/nats-io/nats.go"
@@ -151,7 +153,10 @@ type NATSCallback func(msg kafka.Message) error
 type ShutdownCallback func() error
 
 func (conn *BridgeConnector) jetStreamMessageHandler(msg kafka.Message) error {
-	_, err := conn.bridge.JetStream().Publish(conn.dest(msg), msg.Value)
+	nMsg := nats.NewMsg(conn.dest(msg))
+	nMsg.Header = conn.convertFromKafkaToNatsHeaders(msg.Headers)
+	nMsg.Data = msg.Value
+	_, err := conn.bridge.JetStream().PublishMsg(nMsg)
 	return err
 }
 
@@ -160,7 +165,10 @@ func (conn *BridgeConnector) stanMessageHandler(msg kafka.Message) error {
 }
 
 func (conn *BridgeConnector) natsMessageHandler(msg kafka.Message) error {
-	return conn.bridge.NATS().Publish(conn.dest(msg), msg.Value)
+	nMsg := nats.NewMsg(conn.dest(msg))
+	nMsg.Header = conn.convertFromKafkaToNatsHeaders(msg.Headers)
+	nMsg.Data = msg.Value
+	return conn.bridge.NATS().PublishMsg(nMsg)
 }
 
 func (conn *BridgeConnector) calculateKey(subject string, replyto string) []byte {
@@ -216,6 +224,38 @@ func (conn *BridgeConnector) calculateKey(subject string, replyto string) []byte
 	return []byte{} // empty key by default
 }
 
+func (conn *BridgeConnector) convertFromKafkaToNatsHeaders(hdrs []sarama.RecordHeader) nats.Header {
+	// Iterate over all keys
+	if len(hdrs) > 0 {
+		nHdrs := make(nats.Header)
+		for _, kHdr := range hdrs {
+			if kHdr.Value != nil {
+				nHdrs.Add(string(kHdr.Key), string(kHdr.Value))
+			}
+		}
+		return nHdrs
+	}
+	return nats.Header{} // empty header by default
+}
+
+func (conn *BridgeConnector) convertFromNatsToKafkaHeaders(hdr nats.Header) []sarama.RecordHeader {
+	// Iterate over all keys
+	if len(hdr) > 0 {
+		kHdrs := make([]sarama.RecordHeader, len(hdr))
+
+		i := 0
+		for k, v := range hdr {
+			kHdrs[i].Key = []byte(k)
+			if v != nil {
+				kHdrs[i].Value = []byte(v[0])
+			}
+			i++
+		}
+		return kHdrs
+	}
+	return []sarama.RecordHeader{} // empty header by default
+}
+
 // set up a nats subscription, assumes the lock is held
 func (conn *BridgeConnector) subscribeToNATS(subject string, queueName string) (*nats.Subscription, error) {
 	traceEnabled := conn.bridge.Logger().TraceEnabled()
@@ -225,8 +265,9 @@ func (conn *BridgeConnector) subscribeToNATS(subject string, queueName string) (
 
 		// send to kafka here
 		err := conn.writer(msg).Write(kafka.Message{
-			Key:   conn.calculateKey(msg.Subject, msg.Reply),
-			Value: msg.Data,
+			Key:     conn.calculateKey(msg.Subject, msg.Reply),
+			Value:   msg.Data,
+			Headers: conn.convertFromNatsToKafkaHeaders(msg.Header),
 		})
 
 		if err != nil {
@@ -357,8 +398,9 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string) (*nats.Subscri
 
 		key := conn.calculateKey(conn.config.Subject, conn.config.DurableName)
 		err := conn.writer(msg).Write(kafka.Message{
-			Key:   key,
-			Value: msg.Data,
+			Key:     key,
+			Value:   msg.Data,
+			Headers: conn.convertFromNatsToKafkaHeaders(msg.Header),
 		})
 
 		if err != nil {
