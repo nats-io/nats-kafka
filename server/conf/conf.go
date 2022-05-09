@@ -90,6 +90,7 @@ type SASL struct {
 	User               string
 	Password           string
 	InsecureSkipVerify bool
+	Mechanism          string
 }
 
 // MakeTLSConfig creates a tls.Config from a TLSConf, setting up the key pairs and certs

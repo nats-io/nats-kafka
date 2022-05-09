@@ -43,7 +43,15 @@ func NewManager(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig) (Manager
 	if cc.SASL.User != "" {
 		sc.Net.SASL.Enable = true
 		sc.Net.SASL.Handshake = true
-		sc.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+		if cc.SASL.Mechanism == "scram-sha256" || cc.SASL.Mechanism == "scram-sha-256" || cc.SASL.Mechanism == "sha256" {
+			sc.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: SHA256} }
+			sc.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
+		} else if cc.SASL.Mechanism == "scram-sha512" || cc.SASL.Mechanism == "scram-sha-512" || cc.SASL.Mechanism == "sha512" {
+			sc.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: SHA512} }
+			sc.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
+		} else {
+			sc.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+		}
 		sc.Net.SASL.User = cc.SASL.User
 		sc.Net.SASL.Password = cc.SASL.Password
 	}
