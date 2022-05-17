@@ -17,7 +17,6 @@
 package kafka
 
 import (
-	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -63,30 +62,14 @@ func IsTopicExist(err error) bool {
 
 // NewProducer returns a new Kafka Producer.
 func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic string) (Producer, error) {
-	sc := sarama.NewConfig()
-	sc.Producer.Return.Successes = true
-	sc.Net.DialTimeout = time.Duration(bc.ConnectTimeout) * time.Millisecond
-	sc.ClientID = "nats-kafka-producer"
+	sc, err := GetSaramaConfig(cc, "nats-kafka-producer", time.Duration(bc.ConnectTimeout)*time.Millisecond)
+	if err != nil {
+		return nil, err
+	}
 
+	sc.Producer.Return.Successes = true
 	if cc.Balancer == conf.LeastBytes {
 		sc.Producer.Partitioner = NewLeastBytesPartitioner
-	}
-
-	if cc.SASL.User != "" {
-		sc.Net.SASL.Enable = true
-		sc.Net.SASL.Handshake = true
-		sc.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-		sc.Net.SASL.User = cc.SASL.User
-		sc.Net.SASL.Password = cc.SASL.Password
-	}
-	if sc.Net.SASL.Enable && cc.SASL.InsecureSkipVerify {
-		sc.Net.TLS.Enable = true
-		sc.Net.TLS.Config = &tls.Config{
-			InsecureSkipVerify: cc.SASL.InsecureSkipVerify,
-		}
-	} else if tlsC, err := cc.TLS.MakeTLSConfig(); tlsC != nil && err == nil {
-		sc.Net.TLS.Enable = true
-		sc.Net.TLS.Config = tlsC
 	}
 
 	sp, err := sarama.NewSyncProducer(cc.Brokers, sc)
@@ -99,7 +82,7 @@ func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic s
 		topic:         topic,
 		saslOn:        sc.Net.SASL.Enable,
 		tlsOn:         sc.Net.TLS.Enable,
-		tlsSkipVerify: cc.SASL.InsecureSkipVerify,
+		tlsSkipVerify: cc.TLS.InsecureSkipVerify,
 	}
 
 	// If schema registry url and subject name both are set, enable schema registry integration

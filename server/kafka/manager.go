@@ -17,7 +17,6 @@
 package kafka
 
 import (
-	"crypto/tls"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -36,25 +35,9 @@ type saramaManager struct {
 
 // NewManager returns a Kafka Manager.
 func NewManager(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig) (Manager, error) {
-	sc := sarama.NewConfig()
-	sc.Net.DialTimeout = time.Duration(bc.ConnectTimeout) * time.Millisecond
-	sc.ClientID = "nats-kafka-manager"
-
-	if cc.SASL.User != "" {
-		sc.Net.SASL.Enable = true
-		sc.Net.SASL.Handshake = true
-		sc.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-		sc.Net.SASL.User = cc.SASL.User
-		sc.Net.SASL.Password = cc.SASL.Password
-	}
-	if sc.Net.SASL.Enable && cc.SASL.InsecureSkipVerify {
-		sc.Net.TLS.Enable = true
-		sc.Net.TLS.Config = &tls.Config{
-			InsecureSkipVerify: cc.SASL.InsecureSkipVerify,
-		}
-	} else if tlsC, err := cc.TLS.MakeTLSConfig(); tlsC != nil && err == nil {
-		sc.Net.TLS.Enable = true
-		sc.Net.TLS.Config = tlsC
+	sc, err := GetSaramaConfig(cc, "nats-kafka-manager", time.Duration(bc.ConnectTimeout)*time.Millisecond)
+	if err != nil {
+		return nil, err
 	}
 
 	ca, err := sarama.NewClusterAdmin(cc.Brokers, sc)

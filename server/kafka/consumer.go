@@ -18,7 +18,6 @@ package kafka
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -76,26 +75,9 @@ type saramaConsumer struct {
 
 // NewConsumer returns a new Kafka Consumer.
 func NewConsumer(cc conf.ConnectorConfig, dialTimeout time.Duration) (Consumer, error) {
-	sc := sarama.NewConfig()
-	sc.Net.DialTimeout = dialTimeout
-	sc.ClientID = "nats-kafka-consumer"
-
-	if cc.SASL.User != "" {
-		sc.Net.SASL.Enable = true
-		sc.Net.SASL.Handshake = true
-		sc.Net.SASL.Mechanism = sarama.SASLTypePlaintext
-		sc.Net.SASL.User = cc.SASL.User
-		sc.Net.SASL.Password = cc.SASL.Password
-	}
-
-	if sc.Net.SASL.Enable && cc.SASL.InsecureSkipVerify {
-		sc.Net.TLS.Enable = true
-		sc.Net.TLS.Config = &tls.Config{
-			InsecureSkipVerify: cc.SASL.InsecureSkipVerify,
-		}
-	} else if tlsC, err := cc.TLS.MakeTLSConfig(); tlsC != nil && err == nil {
-		sc.Net.TLS.Enable = true
-		sc.Net.TLS.Config = tlsC
+	sc, err := GetSaramaConfig(cc, "nats-kafka-consumer", dialTimeout)
+	if err != nil {
+		return nil, err
 	}
 
 	if cc.MinBytes > 0 {
@@ -110,7 +92,7 @@ func NewConsumer(cc conf.ConnectorConfig, dialTimeout time.Duration) (Consumer, 
 		topic:         cc.Topic,
 		saslOn:        sc.Net.SASL.Enable,
 		tlsOn:         sc.Net.TLS.Enable,
-		tlsSkipVerify: cc.SASL.InsecureSkipVerify,
+		tlsSkipVerify: cc.TLS.InsecureSkipVerify,
 	}
 
 	// If schema registry url and subject name both are set, enable schema registry integration

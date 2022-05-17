@@ -80,15 +80,27 @@ type NATSKafkaBridgeConfig struct {
 
 // TLSConf holds the configuration for a TLS connection/server
 type TLSConf struct {
-	Key  string
-	Cert string
-	Root string
+	Key                string
+	Cert               string
+	Root               string
+	InsecureSkipVerify bool
 }
 
 // SASL holds the configuration for SASL authentication.
 type SASL struct {
-	User               string
-	Password           string
+	Mechanism string
+	User      string
+	Password  string
+	GSSAPI    struct {
+		AuthType           int
+		KeyTabPath         string
+		KerberosConfigPath string
+		ServiceName        string
+		Username           string
+		Password           string
+		Realm              string
+		DisablePAFXFAST    bool
+	}
 	InsecureSkipVerify bool
 }
 
