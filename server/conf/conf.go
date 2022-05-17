@@ -101,7 +101,6 @@ type SASL struct {
 		Realm              string
 		DisablePAFXFAST    bool
 	}
-	InsecureSkipVerify bool
 }
 
 // MakeTLSConfig creates a tls.Config from a TLSConf, setting up the key pairs and certs

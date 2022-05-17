@@ -9,6 +9,7 @@ import (
 	"github.com/nats-io/nats-kafka/server/conf"
 )
 
+// GetSaramaConfig creates a common sarama.Config
 func GetSaramaConfig(cc conf.ConnectorConfig, clientID string, dialTimeout time.Duration) (*sarama.Config, error) {
 	sc := sarama.NewConfig()
 	sc.ClientID = clientID
