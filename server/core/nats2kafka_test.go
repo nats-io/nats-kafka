@@ -292,7 +292,7 @@ func TestSimpleSendOnNatsReceiveOnKafkaWithHeader(t *testing.T) {
 	subject := "test"
 	topic := nuid.Next()
 	msg := nats.NewMsg(subject)
-	msg.Header.Add("David Copper", "Field")
+	msg.Header.Add("David-Copper", "Field")
 	msg.Data = []byte("HELLO MAGIC")
 
 	connect := []conf.ConnectorConfig{

@@ -16,9 +16,9 @@ install: nats-kafka
 
 .PHONY: install-tools
 install-tools:
-	cd $(HOME) && go get honnef.co/go/tools/cmd/staticcheck
-	cd $(HOME) && go get github.com/client9/misspell/cmd/misspell
-	cd $(HOME) && go get golang.org/x/tools/cmd/goimports
+	cd $(HOME) && go install honnef.co/go/tools/cmd/staticcheck@latest
+	cd $(HOME) && go install github.com/client9/misspell/cmd/misspell@latest
+	cd $(HOME) && go install golang.org/x/tools/cmd/goimports@latest
 
 .PHONY: lint
 lint:

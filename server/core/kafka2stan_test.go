@@ -132,6 +132,10 @@ func TestSimpleSASLSendOnKafkaReceiveOnStan(t *testing.T) {
 }
 
 func TestSimpleSendOnKafkaReceiveOnStanWithGroup(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	channel := "test"
 	topic := nuid.Next()
 	msg := "hello world"
