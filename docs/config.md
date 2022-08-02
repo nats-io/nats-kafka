@@ -64,12 +64,24 @@ Kafka allow for SASL_PLAIN connection with user and password.  This also support
 For each connector section as needed:
 
 * `insecureskipverify` - (optional) allow for auto-adjustment for TLS handshake default to false (Azure EventHub requires this to be `true`)
+* `mechanism` - (optional) set the SASL mechanism to `scram-sha-256` or `scram-sha-512`, default is `plain`
+
 ```yaml
 "sasl": {
   "user": "userid",
   "password": "password"
 }
 ```
+
+With optional mechanism:
+```yaml
+"sasl": {
+  "user": "userid",
+  "password": "password",
+  "mechanism": "scram-sha-512"
+}
+```
+
 <a name="logging"></a>
 
 ### Logging
