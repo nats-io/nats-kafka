@@ -95,7 +95,8 @@ func TestConvertFromKafkaToNatsHeadersOk(t *testing.T) {
 		stats: NewConnectorStatsHolder("name", "id"),
 	}
 
-	var kHdrs = make([]sarama.RecordHeader, 3)
+	kHdrs := make([]sarama.RecordHeader, 3)
+	kHdrsMap := make(map[string]string)
 	i := 0
 	for i < len(kHdrs) {
 		keyString := fmt.Sprintf("key-%d", i)
@@ -103,14 +104,15 @@ func TestConvertFromKafkaToNatsHeadersOk(t *testing.T) {
 		kHdrs[i].Key = []byte(keyString)
 		kHdrs[i].Value = []byte(valueString)
 		i++
+
+		kHdrsMap[keyString] = valueString
 	}
 
 	var nHdrs = conn.convertFromKafkaToNatsHeaders(kHdrs)
 	i = 0
 	require.Equal(t, 3, len(nHdrs))
 	for nKey, nValue := range nHdrs {
-		require.Equal(t, string(kHdrs[i].Key), nKey)
-		require.Equal(t, string(kHdrs[i].Value), nValue[0])
+		require.Equal(t, kHdrsMap[nKey], nValue[0])
 		i++
 	}
 }

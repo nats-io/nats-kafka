@@ -7,30 +7,30 @@ on:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     steps:
+    - name: Checkout source
+      uses: actions/checkout@v3
     - name: Setup Go
       id: setup-go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v3
       with:
-        go-version: ^1.17
-    - name: Checkout source
-      uses: actions/checkout@v2
+        go-version-file: go.mod
     - name: Install tools
       run: make install-tools
     - name: Lint
       run: make lint
   test:
     name: Test
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     steps:
+    - name: Checkout source
+      uses: actions/checkout@v3
     - name: Setup Go
       id: setup-go
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v3
       with:
-        go-version: ^1.17
-    - name: Checkout source
-      uses: actions/checkout@v2
+        go-version-file: go.mod
     - name: Test and upload coverage
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
