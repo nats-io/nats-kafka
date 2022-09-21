@@ -55,10 +55,10 @@ monitoring.
 
 ## External Resources
 
-* [NATS](https://nats.io/documentation/)
+* [NATS](https://docs.nats.io/)
 * [NATS Server](https://github.com/nats-io/nats-server)
 * [NATS Streaming](https://github.com/nats-io/nats-streaming-server)
-* [JetStream](https://docs.nats.io/jetstream/jetstream)
+* [JetStream](https://docs.nats.io/nats-concepts/jetstream)
 * [Kafka](https://kafka.apache.org/)
 * [Confluent Schema Registry](https://docs.confluent.io/platform/current/schema-registry/index.html)
 
