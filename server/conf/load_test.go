@@ -17,7 +17,6 @@
 package conf
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -50,7 +49,7 @@ func TestLoadFromString(t *testing.T) {
 }
 
 func TestLoadFromFile(t *testing.T) {
-	file, err := ioutil.TempFile(os.TempDir(), "prefix")
+	file, err := os.CreateTemp(os.TempDir(), "prefix")
 	require.NoError(t, err)
 
 	configString := `
@@ -63,7 +62,7 @@ func TestLoadFromFile(t *testing.T) {
 	fullPath, err := ValidateFilePath(file.Name())
 	require.NoError(t, err)
 
-	err = ioutil.WriteFile(fullPath, []byte(configString), 0644)
+	err = os.WriteFile(fullPath, []byte(configString), 0644)
 	require.NoError(t, err)
 
 	config := SimpleConf{}

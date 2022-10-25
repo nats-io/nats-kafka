@@ -18,7 +18,6 @@ package core
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"testing"
@@ -36,7 +35,7 @@ func TestStartWithConfigFileFlag(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	file, err := ioutil.TempFile(os.TempDir(), "config")
+	file, err := os.CreateTemp(os.TempDir(), "config")
 	require.NoError(t, err)
 
 	configString := `
@@ -56,7 +55,7 @@ func TestStartWithConfigFileFlag(t *testing.T) {
 	fullPath, err := conf.ValidateFilePath(file.Name())
 	require.NoError(t, err)
 
-	err = ioutil.WriteFile(fullPath, []byte(configString), 0644)
+	err = os.WriteFile(fullPath, []byte(configString), 0644)
 	require.NoError(t, err)
 
 	flags := Flags{
@@ -91,7 +90,7 @@ func TestStartWithConfigFileEnv(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	file, err := ioutil.TempFile(os.TempDir(), "config")
+	file, err := os.CreateTemp(os.TempDir(), "config")
 	require.NoError(t, err)
 
 	configString := `
@@ -111,7 +110,7 @@ func TestStartWithConfigFileEnv(t *testing.T) {
 	fullPath, err := conf.ValidateFilePath(file.Name())
 	require.NoError(t, err)
 
-	err = ioutil.WriteFile(fullPath, []byte(configString), 0644)
+	err = os.WriteFile(fullPath, []byte(configString), 0644)
 	require.NoError(t, err)
 
 	flags := Flags{

@@ -18,7 +18,7 @@ package conf
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"github.com/nats-io/nats-server/v2/conf"
 )
@@ -28,7 +28,7 @@ import (
 // otherwise, the fields in the config struct will act as defaults if the file doesn't contain them
 // Strict will also force an error if the struct contains any fields which are not settable with reflection
 func LoadConfigFromFile(configFile string, configStruct interface{}, strict bool) error {
-	configString, err := ioutil.ReadFile(configFile)
+	configString, err := os.ReadFile(configFile)
 	if err != nil {
 		return fmt.Errorf("error reading configuration file: %s", err.Error())
 	}

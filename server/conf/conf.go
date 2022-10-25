@@ -20,7 +20,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	"github.com/nats-io/nats-kafka/server/logging"
 )
@@ -118,7 +118,7 @@ func (tlsConf *TLSConf) MakeTLSConfig() (*tls.Config, error) {
 
 	if tlsConf.Root != "" {
 		// Load CA cert
-		caCert, err := ioutil.ReadFile(tlsConf.Root)
+		caCert, err := os.ReadFile(tlsConf.Root)
 		if err != nil {
 			return nil, err
 		}
