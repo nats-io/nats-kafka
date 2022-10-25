@@ -359,7 +359,7 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string) (*nats.Subscri
 		return nil, fmt.Errorf("bridge not configured to use JetStream")
 	}
 
-	options := []nats.SubOpt{}
+	options := []nats.SubOpt{nats.AckExplicit()}
 
 	if conn.config.DurableName != "" {
 		options = append(options, nats.Durable(conn.config.DurableName))
@@ -375,8 +375,6 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string) (*nats.Subscri
 	} else {
 		options = append(options, nats.DeliverAll())
 	}
-
-	options = append(options, nats.AckExplicit())
 
 	if conn.bridge.config.JetStream.EnableFlowControl {
 		options = append(options, nats.EnableFlowControl())

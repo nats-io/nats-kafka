@@ -464,6 +464,8 @@ func TestJetStreamQueueDurableSubscriber(t *testing.T) {
 		Durable:        durable,
 		AckPolicy:      nats.AckExplicitPolicy,
 		DeliverSubject: "foo",
+		OptStartSeq:    2,
+		DeliverPolicy:  nats.DeliverByStartSequencePolicy,
 	})
 	require.NoError(t, err)
 
@@ -537,6 +539,8 @@ func TestJetStreamSASLQueueDurableSubscriber(t *testing.T) {
 		Durable:        durable,
 		AckPolicy:      nats.AckExplicitPolicy,
 		DeliverSubject: "foo",
+		OptStartSeq:    2,
+		DeliverPolicy:  nats.DeliverByStartSequencePolicy,
 	})
 	require.NoError(t, err)
 
