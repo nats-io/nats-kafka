@@ -18,7 +18,7 @@ package core
 import (
 	"crypto/tls"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -47,7 +47,7 @@ func TestMonitoringPages(t *testing.T) {
 	response, err := client.Get(tbs.Bridge.GetMonitoringRootURL())
 	require.NoError(t, err)
 	defer response.Body.Close()
-	contents, err := ioutil.ReadAll(response.Body)
+	contents, err := io.ReadAll(response.Body)
 	require.NoError(t, err)
 	html := string(contents)
 	require.True(t, strings.Contains(html, "/varz"))
@@ -60,7 +60,7 @@ func TestMonitoringPages(t *testing.T) {
 	response, err = client.Get(tbs.Bridge.GetMonitoringRootURL() + "varz")
 	require.NoError(t, err)
 	defer response.Body.Close()
-	contents, err = ioutil.ReadAll(response.Body)
+	contents, err = io.ReadAll(response.Body)
 	require.NoError(t, err)
 
 	bridgeStats := BridgeStats{}

@@ -17,7 +17,6 @@
 package conf
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,7 +25,7 @@ import (
 )
 
 func TestFilePath(t *testing.T) {
-	file, err := ioutil.TempFile(os.TempDir(), "prefix")
+	file, err := os.CreateTemp(os.TempDir(), "prefix")
 	require.NoError(t, err)
 
 	path, err := ValidateFilePath(file.Name())
@@ -38,7 +37,7 @@ func TestFilePath(t *testing.T) {
 }
 
 func TestDirPath(t *testing.T) {
-	path, err := ioutil.TempDir(os.TempDir(), "prefix")
+	path, err := os.MkdirTemp(os.TempDir(), "prefix")
 	require.NoError(t, err)
 
 	abspath, err := ValidateDirPath(path)
@@ -50,7 +49,7 @@ func TestDirPath(t *testing.T) {
 }
 
 func TestPathDoesntExist(t *testing.T) {
-	path, err := ioutil.TempDir(os.TempDir(), "prefix")
+	path, err := os.MkdirTemp(os.TempDir(), "prefix")
 	require.NoError(t, err)
 
 	path = filepath.Join(path, "foo")
