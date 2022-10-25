@@ -15,7 +15,6 @@ jobs:
       id: setup-go
       uses: actions/setup-go@v3
       with:
-        go-version-file: go.mod
         go-version: 1.19.x
     - name: Install tools
       run: make install-tools
@@ -31,7 +30,7 @@ jobs:
       id: setup-go
       uses: actions/setup-go@v3
       with:
-        go-version-file: go.mod
+        go-version: 1.19.x
     - name: Test and upload coverage
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
