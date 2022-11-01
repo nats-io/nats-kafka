@@ -26,9 +26,10 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/riferrei/srclient"
 	"github.com/santhosh-tekuri/jsonschema/v5"
+
+	"github.com/nats-io/nats-kafka/server/conf"
 )
 
 // Message represents a Kafka message.
@@ -310,14 +311,22 @@ func (c *saramaConsumer) Cleanup(sarama.ConsumerGroupSession) error {
 // ConsumeClaim processes incoming consumer group messages. This satisfies
 // sarama.ConsumerGroupHandler.
 func (c *saramaConsumer) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	for cmsg := range claim.Messages() {
-		c.fetchCh <- cmsg
 
-		cmsg = <-c.commitCh
-		sess.MarkMessage(cmsg, "")
+	for {
+		select {
+		case cmsg := <-claim.Messages():
+			c.fetchCh <- cmsg
+
+			cmsg = <-c.commitCh
+			sess.MarkMessage(cmsg, "")
+
+		// Should return when `session.Context()` is done.
+		// If not, will raise `ErrRebalanceInProgress` or `read tcp <ip>:<port>: i/o timeout` when kafka rebalance. see:
+		// https://github.com/Shopify/sarama/issues/1192
+		case <-sess.Context().Done():
+			return nil
+		}
 	}
-
-	return nil
 }
 
 // Retrieve the schema of the message and deserialize it.
