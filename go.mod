@@ -59,7 +59,7 @@ require (
 	golang.org/x/net v0.0.0-20220927171203-f486391704dc // indirect
 	golang.org/x/sync v0.0.0-20220923202941-7f9b1623fab7 // indirect
 	golang.org/x/sys v0.0.0-20221010170243-090e33056c14 // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/text v0.3.8 // indirect
 	golang.org/x/time v0.0.0-20220922220347-f3bd1da661af // indirect
 	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 // indirect
 	google.golang.org/protobuf v1.25.1-0.20200805231151-a709e31e5d12 // indirect
