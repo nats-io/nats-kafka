@@ -354,7 +354,7 @@ func (conn *BridgeConnector) subscribeToChannel() (stan.Subscription, error) {
 }
 
 // set up a JetStream subscription, assumes the lock is held
-func (conn *BridgeConnector) subscribeToJetStream(subject string) (*nats.Subscription, error) {
+func (conn *BridgeConnector) subscribeToJetStream(subject string, queueName string) (*nats.Subscription, error) {
 	if conn.bridge.JetStream() == nil {
 		return nil, fmt.Errorf("bridge not configured to use JetStream")
 	}
@@ -420,7 +420,11 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string) (*nats.Subscri
 		}
 	}
 
-	return conn.bridge.JetStream().Subscribe(subject, callback, options...)
+	if queueName == "" {
+		return conn.bridge.JetStream().Subscribe(subject, callback, options...)
+	}
+
+	return conn.bridge.JetStream().QueueSubscribe(subject, queueName, callback, options...)
 }
 
 func (conn *BridgeConnector) setUpListener(target kafka.Consumer, natsCallbackFunc NATSCallback) (ShutdownCallback, error) {
