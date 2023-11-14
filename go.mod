@@ -56,7 +56,7 @@ require (
 	github.com/xdg-go/stringprep v1.0.3 // indirect
 	go.etcd.io/bbolt v1.3.6 // indirect
 	golang.org/x/crypto v0.15.0 // indirect
-	golang.org/x/net v0.10.0 // indirect
+	golang.org/x/net v0.18.0 // indirect
 	golang.org/x/sync v0.0.0-20220923202941-7f9b1623fab7 // indirect
 	golang.org/x/sys v0.14.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
