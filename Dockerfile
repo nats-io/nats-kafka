@@ -1,4 +1,4 @@
-FROM golang:1.19 AS build
+FROM golang:1.21 AS build
 COPY . /go/src/nats-kafka
 WORKDIR /go/src/nats-kafka
 ARG VERSION
