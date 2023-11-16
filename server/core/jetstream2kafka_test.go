@@ -906,3 +906,55 @@ func TestJetStreamAlreadyConnected(t *testing.T) {
 
 	require.NoError(t, tbs.Bridge.connectToJetStream())
 }
+
+func TestJetStreamSourcesConsumedByKafka(t *testing.T) {
+	topic := nuid.Next()
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:        "JetStreamToKafka",
+			Subject:     "foo.*",
+			Topic:       topic,
+			DurableName: "KafkaBridgeConsumer",
+			Stream:      "FOO_GLOBAL",
+		},
+	}
+
+	tbs, err := StartTestEnvironmentWithSources(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	tbs.Bridge.checkConnections()
+
+	_, err = tbs.JS.Publish("foo.one", []byte("one"))
+	require.NoError(t, err)
+	_, err = tbs.JS.Publish("foo.two", []byte("two"))
+	require.NoError(t, err)
+	_, err = tbs.JS.Publish("foo.one.1", []byte("another one"))
+	require.NoError(t, err)
+	_, err = tbs.JS.Publish("foo.three", []byte("three"))
+	require.NoError(t, err)
+
+	reader := tbs.CreateReader(topic, 5000)
+	defer reader.Close()
+
+	_, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
+	require.NoError(t, err)
+	require.Equal(t, "one", string(data))
+
+	_, data, _, err = tbs.GetMessageFromKafka(reader, 5000)
+	require.NoError(t, err)
+	require.Equal(t, "two", string(data))
+
+	_, data, _, err = tbs.GetMessageFromKafka(reader, 5000)
+	require.NoError(t, err)
+	require.Equal(t, "three", string(data))
+
+	stats := tbs.Bridge.SafeStats()
+	connStats := stats.Connections[0]
+	require.Equal(t, int64(3), connStats.MessagesIn)
+	require.Equal(t, int64(3), connStats.MessagesOut)
+	require.Equal(t, int64(1), connStats.Connects)
+	require.Equal(t, int64(0), connStats.Disconnects)
+	require.True(t, connStats.Connected)
+}

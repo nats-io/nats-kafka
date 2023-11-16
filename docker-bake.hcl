@@ -16,7 +16,7 @@ variable CI {
 }
 
 variable image_base {
-  default = "docker-image://alpine:3.17.3"
+  default = "docker-image://alpine:3.18.4"
 }
 
 variable image_goreleaser {
