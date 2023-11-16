@@ -209,6 +209,7 @@ type ConnectorConfig struct {
 
 	Subject   string // Used for nats and jetstream connections
 	QueueName string // Optional, used for nats connections
+	Stream    string // Uses BindStream option for JetStream to consume from sourced streams
 
 	Brokers []string // list of brokers to use for creating a reader/writer
 	Topic   string   // kafka topic

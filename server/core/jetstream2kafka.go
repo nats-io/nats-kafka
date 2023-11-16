@@ -81,7 +81,7 @@ func (conn *JetStream2KafkaConnector) Shutdown() error {
 // CheckConnections ensures the nats/stan connection and report an error if it is down
 func (conn *JetStream2KafkaConnector) CheckConnections() error {
 	if !conn.bridge.CheckJetStream() {
-		return fmt.Errorf("%s connector requires nats streaming to be available", conn.String())
+		return fmt.Errorf("%s connector requires nats jetstream to be available", conn.String())
 	}
 	return nil
 }

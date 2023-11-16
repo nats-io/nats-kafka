@@ -382,6 +382,9 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string) (*nats.Subscri
 	if d := conn.bridge.config.JetStream.HeartbeatInterval; d > 0 {
 		options = append(options, nats.IdleHeartbeat(time.Duration(d)*time.Millisecond))
 	}
+	if len(conn.config.Stream) > 0 {
+		options = append(options, nats.BindStream(conn.config.Stream))
+	}
 
 	traceEnabled := conn.bridge.Logger().TraceEnabled()
 	ackSyncEnabled := conn.bridge.config.JetStream.EnableAckSync

@@ -172,6 +172,60 @@ func StartSASLTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, err
 	return tbs, err
 }
 
+func StartTestEnvironmentWithSources(connections []conf.ConnectorConfig) (*TestEnv, error) {
+	tbs, err := StartTestEnvironmentInfrastructure(false, false, collectTopics(connections))
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+		Name:     "FOO_1",
+		Subjects: []string{"foo.one"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+		Name:     "FOO_2",
+		Subjects: []string{"foo.two"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+		Name:     "FOO_3",
+		Subjects: []string{"foo.three"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+		Name:     "SUB_FOO_1",
+		Subjects: []string{"foo.one.1"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+		Name: "FOO_GLOBAL",
+		Sources: []*nats.StreamSource{
+			{Name: "FOO_1"},
+			{Name: "FOO_2"},
+			{Name: "FOO_3"},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	err = tbs.StartBridge(connections)
+	if err != nil {
+		tbs.Close()
+		return nil, err
+	}
+	return tbs, err
+}
+
 // StartTestEnvironmentInfrastructure creates the kafka server, Nats and streaming
 // but does not start a bridge, you can use StartBridge to start a bridge afterward
 func StartTestEnvironmentInfrastructure(useSASL, useTLS bool, topics []string) (*TestEnv, error) {
