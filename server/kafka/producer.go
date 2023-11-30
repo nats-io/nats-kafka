@@ -96,6 +96,9 @@ func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic s
 		sc.Net.TLS.Enable = true
 		sc.Net.TLS.Config = tlsC
 	}
+	if cc.SASL.TLS {
+		sc.Net.TLS.Enable = cc.SASL.TLS
+	}
 
 	sp, err := sarama.NewSyncProducer(cc.Brokers, sc)
 	if err != nil {

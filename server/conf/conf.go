@@ -85,12 +85,13 @@ type TLSConf struct {
 	Root string
 }
 
-// SASL holds the configuration for SASL authentication.
+// SASL holds the configuration for SASL authentication with Kafka.
 type SASL struct {
 	User               string
 	Password           string
 	InsecureSkipVerify bool
 	Mechanism          string
+	TLS                bool
 }
 
 // MakeTLSConfig creates a tls.Config from a TLSConf, setting up the key pairs and certs
