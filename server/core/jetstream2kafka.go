@@ -47,7 +47,7 @@ func (conn *JetStream2KafkaConnector) Start() error {
 
 	conn.bridge.Logger().Tracef("starting connection %s", conn.String())
 
-	sub, err := conn.subscribeToJetStream(conn.config.Subject)
+	sub, err := conn.subscribeToJetStream(conn.config.Subject, conn.config.QueueName)
 	if err != nil {
 		return err
 	}

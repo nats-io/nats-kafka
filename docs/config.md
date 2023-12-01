@@ -241,7 +241,15 @@ All connectors can have an optional id, which is used in monitoring:
 For NATS connections, specify:
 
 * `subject` - for NATS/JetStream the subject to subscribe/publish to, depending on the connections direction.
-* `queuename` - the queue group to use in subscriptions, this is optional but useful for load balancing.
+* `queuename` - (optional) the queue group to use in subscriptions, this is optional but useful for load balancing.
+
+For JetStream connections, specify:
+
+* `subject` - for NATS/JetStream the subject to subscribe/publish to, depending on the connections direction.
+* `queuename` - (optional) the queue group to use in subscriptions, this is optional but useful for load balancing.
+* `durablename` - (optional) durable name for the NATS Streaming/JetStream subscription (if appropriate.)
+* `startatsequence` - (optional) for NATS Streaming/JetStream start position, use -1 for start with last received, 0 for deliver all available (the default.)
+* `startattime` - (optional) for NATS Streaming/JetStream the start position as a time, in Unix seconds since the epoch, mutually exclusive with `startatsequence`.
 
 Keep in mind that NATS queue groups do not guarantee ordering, since the queue subscribers can be on different nats-servers in a cluster. So if you have to bridges running with connectors on the same NATS queue/subject pair and have a high message rate you may get messages in the Kafka topic out of order.
 
