@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -35,6 +36,8 @@ import (
 	"github.com/nats-io/nuid"
 	"github.com/nats-io/stan.go"
 )
+
+const DEFAULT_REGEX_CAR_ID_FROM_SUB = `[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+\.([^\\.]+)`
 
 // Connector is the abstraction for all of the bridge connector types
 type Connector interface {
@@ -174,6 +177,12 @@ func (conn *BridgeConnector) natsMessageHandler(msg kafka.Message) error {
 func (conn *BridgeConnector) calculateKey(subject string, replyto string) []byte {
 	keyType := conn.config.KeyType
 	keyValue := conn.config.KeyValue
+	if keyValue == "" {
+		keyValue = os.Getenv("REGEX_CAR_ID_FROM_SUB")
+		if keyValue == "" {
+			keyValue = DEFAULT_REGEX_CAR_ID_FROM_SUB
+		}
+	}
 
 	if keyType == conf.FixedKey {
 		return []byte(keyValue)
@@ -188,6 +197,7 @@ func (conn *BridgeConnector) calculateKey(subject string, replyto string) []byte
 	}
 
 	if keyType == conf.SubjectRegex {
+
 		r, err := regexp.Compile(keyValue)
 
 		if err != nil {
@@ -201,7 +211,7 @@ func (conn *BridgeConnector) calculateKey(subject string, replyto string) []byte
 			return []byte(result[1])
 		}
 
-		return []byte{}
+		return []byte(subject)
 	}
 
 	if keyType == conf.ReplyRegex {
@@ -397,11 +407,11 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string, queueName stri
 			conn.bridge.Logger().Tracef("%s received message", conn.String())
 		}
 
-		key := conn.calculateKey(conn.config.Subject, conn.config.DurableName)
+		//key := conn.calculateKey(conn.config.Subject, conn.config.DurableName)
 		err := conn.writer(msg).Write(kafka.Message{
-			Key:     key,
+			Key:     conn.calculateKey(msg.Subject, conn.config.Topic),
 			Value:   msg.Data,
-			Headers: conn.convertFromNatsToKafkaHeaders(msg.Header),
+			Headers: conn.convertFromNatsToKafkaHeaders(nats.Header{"sub": {msg.Subject}}),
 		})
 
 		if err != nil {
@@ -409,7 +419,7 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string, queueName stri
 			conn.bridge.Logger().Errorf("connector publish failure, %s, %s", conn.String(), err.Error())
 		} else {
 			if traceEnabled {
-				conn.bridge.Logger().Tracef("%s wrote message to kafka with key %s", conn.String(), string(key))
+				conn.bridge.Logger().Tracef("%s wrote message to kafka from subject %s", conn.String(), msg.Subject)
 			}
 			if ackSyncEnabled {
 				msg.AckSync()
