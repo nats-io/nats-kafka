@@ -85,7 +85,7 @@ nats-kafka.docker: $(goSrc)
 .PHONY: docker
 docker: Dockerfile
 ifneq ($(dtag),)
-	docker build --tag natsio/nats-kafka:$(dtag) --build-arg VERSION=$(dtag) .
+	docker build --tag ghcr.io/1047games/nats-kafka:$(dtag) --build-arg VERSION=$(dtag) .
 else
 	# Missing dtag, try again. Example: make docker dtag=1.2.3
 	exit 1
@@ -96,9 +96,9 @@ dockerx:
 ifneq ($(ver),)
 	# Ensure 'docker buildx ls' shows correct platforms.
 	docker buildx build \
-		--tag natsio/nats-kafka:$(ver) --tag natsio/nats-kafka:latest \
+		--tag ghcr.io/1047games/nats-kafka:$(ver) --tag ghcr.io/1047games/nats-kafka:latest \
 		--build-arg VERSION=$(ver) \
-		--platform linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64/v8 \
+		--platform linux/amd64,linux/arm/v7,linux/arm64/v8 \
 		--push .
 else
 	# Missing version, try this.
