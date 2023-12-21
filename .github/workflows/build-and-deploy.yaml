@@ -1,0 +1,53 @@
+name: Build and Deploy
+
+on:
+  push:
+    paths-ignore:
+      - 'terraform/**'
+      - 'docs/**'
+      - 'README.md'
+    branches:
+      - main
+
+  pull_request:
+    paths-ignore:
+      - 'terraform/**'
+      - 'docs/**'
+      - 'README.md'
+    branches:
+      - main
+
+jobs:
+
+  test:
+    runs-on: ubuntu-latest-8-cores
+    steps:
+      - name: Get Github Token
+        id: github-token
+        uses: getsentry/action-github-app-token@v2
+        with:
+          app_id: ${{ secrets.GLOBAL_GITHUB_APP_ID }}
+          private_key: ${{ secrets.GLOBAL_GITHUB_APP_KEY }}
+      - name: Prepare Github auth
+        run: git config --global url."https://x-access-token:${{ steps.github-token.outputs.token }}@github.com/1047Games".insteadOf "https://github.com/1047Games"
+      - uses: actions/checkout@v3
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: Display Go version
+        run: go version
+      - name: Test
+        run: |
+          make test
+
+  docker:
+    needs: [test]
+    uses: 1047Games/reusable-workflows/.github/workflows/reusable-build-docker-image.yaml@build-docker-image-v0
+    with:
+      tags: |
+        type=sha,prefix=,format=long
+        type=ref,event=branch
+        type=ref,event=pr
+    secrets: inherit
