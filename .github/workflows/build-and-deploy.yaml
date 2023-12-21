@@ -3,7 +3,6 @@ name: Build and Deploy
 on:
   push:
     paths-ignore:
-      - 'terraform/**'
       - 'docs/**'
       - 'README.md'
     branches:
@@ -11,7 +10,6 @@ on:
 
   pull_request:
     paths-ignore:
-      - 'terraform/**'
       - 'docs/**'
       - 'README.md'
     branches:
