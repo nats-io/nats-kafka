@@ -38,9 +38,12 @@ jobs:
           check-latest: true
       - name: Display Go version
         run: go version
+      - name: Install tools
+        run: make install-tools
+      - name: Lint
+        run: make lint
       - name: Test
-        run: |
-          make test
+        run: make test
 
   docker:
     needs: [test]
