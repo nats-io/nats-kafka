@@ -513,6 +513,7 @@ func (conn *BridgeConnector) writer(msg interface{}) kafka.Producer {
 	h := getHash(t)
 	w, ok := conn.writers.Load(h)
 	if !ok {
+		conn.bridge.logger.Tracef("Creating new kafka producer")
 		sp, err := kafka.NewProducer(conn.config, conn.bridge.config, t)
 		if err != nil {
 			w = kafka.NewErroredProducer(fmt.Errorf("failed to create producer: %w", err))
