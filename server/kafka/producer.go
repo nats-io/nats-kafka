@@ -24,6 +24,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/riferrei/srclient"
 
 	"github.com/Shopify/sarama"
@@ -70,6 +72,14 @@ func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic s
 
 	if cc.Balancer == conf.LeastBytes {
 		sc.Producer.Partitioner = NewLeastBytesPartitioner
+	}
+	stsSession := session.Must(session.NewSession())
+	stsClient := sts.New(stsSession)
+	callerIdentity, err := stsClient.GetCallerIdentity(nil)
+	if err == nil {
+		fmt.Printf("AWS Caller Identity: %s\n", *callerIdentity.Arn)
+	} else {
+		fmt.Printf("Failed to get AWS caller identity: %v\n", err)
 	}
 
 	if cc.SASL.User != "" {
