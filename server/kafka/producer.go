@@ -17,6 +17,7 @@
 package kafka
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
@@ -24,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-msk-iam-sasl-signer-go/signer"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/riferrei/srclient"
@@ -63,6 +65,15 @@ func IsTopicExist(err error) bool {
 	return terr.Err == sarama.ErrTopicAlreadyExists
 }
 
+type MSKAccessTokenProvider struct {
+	Region string // AWS IAM region
+}
+
+func (m *MSKAccessTokenProvider) Token() (*sarama.AccessToken, error) {
+	token, _, err := signer.GenerateAuthToken(context.TODO(), m.Region)
+	return &sarama.AccessToken{Token: token}, err
+}
+
 // NewProducer returns a new Kafka Producer.
 func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic string) (Producer, error) {
 	sc := sarama.NewConfig()
@@ -96,6 +107,10 @@ func NewProducer(cc conf.ConnectorConfig, bc conf.NATSKafkaBridgeConfig, topic s
 		}
 		sc.Net.SASL.User = cc.SASL.User
 		sc.Net.SASL.Password = cc.SASL.Password
+	} else if cc.IAM.Enable && cc.IAM.Region != "" {
+		sc.Net.SASL.Enable = true
+		sc.Net.SASL.Mechanism = sarama.SASLTypeOAuth
+		sc.Net.SASL.TokenProvider = &MSKAccessTokenProvider{Region: cc.IAM.Region}
 	}
 	if sc.Net.SASL.Enable && cc.SASL.InsecureSkipVerify {
 		sc.Net.TLS.Enable = true
