@@ -94,6 +94,11 @@ type SASL struct {
 	TLS                bool
 }
 
+type IAM struct {
+	Enable bool
+	Region string
+}
+
 // MakeTLSConfig creates a tls.Config from a TLSConf, setting up the key pairs and certs
 func (tlsConf *TLSConf) MakeTLSConfig() (*tls.Config, error) {
 	if tlsConf.Cert == "" || tlsConf.Key == "" {
@@ -216,6 +221,7 @@ type ConnectorConfig struct {
 	Topic   string   // kafka topic
 	TLS     TLSConf  // tls config for connecting to the kafka brokers
 	SASL    SASL     // SASL config for connecting to the kafka brokers, specifically EventHub
+	IAM     IAM      // IAM config for connecting to kafka brokers
 
 	MinBytes  int64  // used by the Kafka reader (for kafka->nats connectors)
 	MaxBytes  int64  // used by the Kafka reader (for kafka->nats connectors)
