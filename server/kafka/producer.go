@@ -17,7 +17,6 @@
 package kafka
 
 import (
-	"context"
 	"crypto/tls"
 	"encoding/binary"
 	"errors"
@@ -25,7 +24,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-msk-iam-sasl-signer-go/signer"
 	"github.com/riferrei/srclient"
 
 	"github.com/Shopify/sarama"
@@ -61,15 +59,6 @@ func IsTopicExist(err error) bool {
 		return false
 	}
 	return terr.Err == sarama.ErrTopicAlreadyExists
-}
-
-type MSKAccessTokenProvider struct {
-	Region string // AWS IAM region
-}
-
-func (m *MSKAccessTokenProvider) Token() (*sarama.AccessToken, error) {
-	token, _, err := signer.GenerateAuthToken(context.TODO(), m.Region)
-	return &sarama.AccessToken{Token: token}, err
 }
 
 // NewProducer returns a new Kafka Producer.
