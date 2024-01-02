@@ -220,6 +220,16 @@ connect: [
       id: "zap",
       topic: "test2",
       subject: "two",
+  },{
+      type: "NATSToKafka",
+      brokers: ["localhost:9098"]
+      id: "zap",
+      topic: "test2",
+      subject: "two",
+      iam: {
+        enable: true,
+        region: "us-west-2"
+      },
   },
 ],
 ```
@@ -269,6 +279,7 @@ All connectors must specify Kafka connection properties, with a few optional set
 * `balancer` - required for a writer, should be "hash" or "leastbytes"
 * `groupid` - (exclusive with partition) used by the reader to set a group id
 * `partition` - (exclusive with groupid) used by the reader to set a partition
+* `iam` - (optional) a dictionary object containing two keys `enable` and `region` which is a boolean and AWS region respectively
 * `minbytes` - (optional) used by Kafka readers to set the minimum bytes for a read
 * `maxbytes` - (optional) used by a Kafka reader to set the maximum bytes for a read
 * `keytype` - (optional) defines the way keys are assigned to messages coming from NATS (see below)
