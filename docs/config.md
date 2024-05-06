@@ -157,6 +157,7 @@ NATS can be configured with the following properties:
 * `maxreconnects` - the maximum number of reconnects to try before exiting the bridge with an error.
 * `tls` - (optional) [TLS configuration](#tls). If the NATS server uses unverified TLS with a valid certificate, this setting isn't required.
 * `usercredentials` - (optional) the path to a credentials file for connecting to NATs.
+* `NKeySeedPath` - (optional) the path to nkey file for authenticating to NATS
 
 <a name="stan"></a>
 
