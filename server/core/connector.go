@@ -550,6 +550,14 @@ func (conn *BridgeConnector) initDestTemplate(destTpl string) {
 			}
 			return s[start:end]
 		},
+		"getKafkaHeaderValue": func(key string, headers []sarama.RecordHeader) string {
+		   for _, header := range(headers) {
+			   if string(header.Key) == key {
+				   return string(header.Value)
+			   }
+		   }
+		   return ""
+	   },
 	}
 	var err error
 	conn.destTemplate, err = template.New("dest").Funcs(funcMap).Parse(destTpl)
