@@ -397,7 +397,7 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string, queueName stri
 			conn.bridge.Logger().Tracef("%s received message", conn.String())
 		}
 
-		key := conn.calculateKey(conn.config.Subject, conn.config.DurableName)
+		key := conn.calculateKey(msg.Subject, conn.config.DurableName)
 		err := conn.writer(msg).Write(kafka.Message{
 			Key:     key,
 			Value:   msg.Data,
