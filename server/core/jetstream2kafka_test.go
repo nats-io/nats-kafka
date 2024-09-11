@@ -723,6 +723,37 @@ func TestSubjectKeyFromJetStream(t *testing.T) {
 	require.Equal(t, subject, string(key))
 }
 
+func TestSubjectWildCardKeyFromJetStream(t *testing.T) {
+	subject := nuid.Next() + ".>"
+	publishSubject := subject + ".alpha"
+	topic := nuid.Next()
+	msg := "hello world"
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:    "JetStreamToKafka",
+			Subject: subject,
+			Topic:   topic,
+			KeyType: "subject",
+		},
+	}
+
+	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	_, err = tbs.JS.Publish(publishSubject, []byte(msg))
+	require.NoError(t, err)
+
+	reader := tbs.CreateReader(topic, 5000)
+	defer reader.Close()
+
+	key, data, _, err := tbs.GetMessageFromKafka(reader, 5000)
+	require.NoError(t, err)
+	require.Equal(t, msg, string(data))
+	require.Equal(t, publishSubject, string(key))
+}
+
 func TestSASLSubjectKeyFromJetStream(t *testing.T) {
 	subject := nuid.Next()
 	topic := nuid.Next()
