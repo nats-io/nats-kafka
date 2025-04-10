@@ -8,11 +8,11 @@ MAX_TRIES=5
 # Return true-like values if and only if logs
 # contain the expected "ready" line
 function kafkaIsReady() {
-  docker-compose -p nats_kafka_test -f resources/test_servers.yml logs kafka | grep "started (kafka.server.KafkaServer)"
+  docker compose -p nats_kafka_test -f resources/test_servers.yml logs kafka | grep "started (kafka.server.KafkaServer)"
 }
 
 function zookeeper() {
-  docker-compose -p nats_kafka_test -f resources/test_servers.yml logs zookeeper | grep "binding to port 0.0.0.0/0.0.0.0:2181"
+  docker compose -p nats_kafka_test -f resources/test_servers.yml logs zookeeper | grep "binding to port 0.0.0.0/0.0.0.0:2181"
 }
 
 function waitUntilServiceIsReady() {
