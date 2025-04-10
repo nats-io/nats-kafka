@@ -50,12 +50,12 @@ test-codecov:
 
 .PHONY: setup-docker-test
 setup-docker-test:
-	docker-compose -p nats_kafka_test -f resources/test_servers.yml up -d
+	docker compose -p nats_kafka_test -f resources/test_servers.yml up -d
 	scripts/wait_for_containers.sh
 
 .PHONY: teardown-docker-test
 teardown-docker-test:
-	docker-compose -p nats_kafka_test -f resources/test_servers.yml down
+	docker compose -p nats_kafka_test -f resources/test_servers.yml down
 
 .PHONY: run-test
 run-test:

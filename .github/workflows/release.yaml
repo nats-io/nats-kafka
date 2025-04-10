@@ -1,26 +1,38 @@
 name: Release
+
 on:
   push:
     tags:
       - v[0-9]+.[0-9]+.[0-9]+
+
+# As this is a release flow, we have to disable various caches to avoid cache poisoning attacks.
+
+permissions:
+  contents: write  # needs 'write' for the '/releases' API end-point, to create the release
+
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
+      with:
+        persist-credentials: false
 
     - name: Setup Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v5
       with:
-        go-version: '1.21'
+        go-version: '1.24'
+        cache: false
 
     - name: Setup QEMU
-      uses: docker/setup-qemu-action@v2
+      uses: docker/setup-qemu-action@v3
 
     - name: Setup Docker Buildx
       id: buildx
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-action@v3
+      with:
+        cache-binary: false
 
     - name: Setup Docker Hub
       uses: docker/login-action@v2
@@ -30,12 +42,14 @@ jobs:
 
     - name: Get Image Tags
       id: tags
+      env:
+        REF_NAME: ${{ github.ref_name }}
       run: |
-        version=$(sed 's/^v//' <<< ${{ github.ref_name }})
+        version=$(sed 's/^v//' <<< "$REF_NAME")
         echo tags="latest,${version}" >> $GITHUB_OUTPUT
 
     - name: Build and Push
-      uses: docker/bake-action@v2
+      uses: docker/bake-action@v6
       env:
         TAGS: "${{ steps.tags.outputs.tags }}"
         REGISTRY: "natsio"
