@@ -155,6 +155,7 @@ type NATSConfig struct {
 	ReconnectWait  int // milliseconds
 	MaxReconnects  int
 
+	NKeySeedPath    string
 	TLS             TLSConf
 	UserCredentials string
 }

@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nats-io/nkeys"
 	nats "github.com/nats-io/nats.go"
 	stan "github.com/nats-io/stan.go"
 )
@@ -80,7 +81,6 @@ func (server *NATSKafkaBridge) connectToNATS() error {
 	if !server.running {
 		return nil // already stopped
 	}
-
 	server.logger.Noticef("connecting to NATS core")
 
 	config := server.config.NATS
@@ -106,6 +106,24 @@ func (server *NATSKafkaBridge) connectToNATS() error {
 
 	if config.UserCredentials != "" {
 		options = append(options, nats.UserCredentials(config.UserCredentials))
+	}
+
+	if config.NKeySeedPath != "" {
+		// Read the NKey seed from a file
+		nkeySeed, err := os.ReadFile(config.NKeySeedPath)
+		if err != nil {
+			return nil
+		}
+
+		keyPair, err := nkeys.FromSeed([]byte(nkeySeed))
+		if err != nil {
+			return nil
+		}
+		signatureHandler := func(nonce []byte) ([]byte, error) {
+			return keyPair.Sign(nonce)
+		}
+		options = append(options, nats.Nkey(string(nkeySeed), signatureHandler))
+		server.logger.Noticef("Using nkey authentication")
 	}
 
 	nc, err := nats.Connect(strings.Join(config.Servers, ","),
