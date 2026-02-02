@@ -108,6 +108,14 @@ func (server *NATSKafkaBridge) connectToNATS() error {
 		options = append(options, nats.UserCredentials(config.UserCredentials))
 	}
 
+	if config.UserNKEY != "" {
+		opt, err := nats.NkeyOptionFromSeed(config.UserNKEY)
+		if err != nil {
+			return err
+		}
+		options = append(options, opt)
+	}
+
 	nc, err := nats.Connect(strings.Join(config.Servers, ","),
 		options...,
 	)

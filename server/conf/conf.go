@@ -157,6 +157,7 @@ type NATSConfig struct {
 
 	TLS             TLSConf
 	UserCredentials string
+	UserNKEY        string
 }
 
 // NATSStreamingConfig configuration for a STAN connection
