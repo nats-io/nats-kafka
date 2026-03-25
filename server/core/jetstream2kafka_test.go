@@ -460,22 +460,12 @@ func TestJetStreamQueueDurableSubscriber(t *testing.T) {
 	})
 	require.NoError(t, err)
 	durable := nuid.Next()
-	_, err = tbs.JS.AddConsumer(stream, &nats.ConsumerConfig{
-		Durable:        durable,
-		AckPolicy:      nats.AckExplicitPolicy,
-		DeliverSubject: "foo",
-		OptStartSeq:    2,
-		DeliverPolicy:  nats.DeliverByStartSequencePolicy,
-	})
-	require.NoError(t, err)
-
 	connect := []conf.ConnectorConfig{
 		{
-			Type:            "JetStreamToKafka",
-			Subject:         subject,
-			Topic:           topic,
-			DurableName:     durable,
-			StartAtSequence: 2,
+			Type:        "JetStreamToKafka",
+			Subject:     subject,
+			Topic:       topic,
+			DurableName: durable,
 		},
 	}
 
@@ -535,22 +525,13 @@ func TestJetStreamSASLQueueDurableSubscriber(t *testing.T) {
 	})
 	require.NoError(t, err)
 	durable := nuid.Next()
-	_, err = tbs.JS.AddConsumer(stream, &nats.ConsumerConfig{
-		Durable:        durable,
-		AckPolicy:      nats.AckExplicitPolicy,
-		DeliverSubject: "foo",
-		OptStartSeq:    2,
-		DeliverPolicy:  nats.DeliverByStartSequencePolicy,
-	})
-	require.NoError(t, err)
 
 	connect := []conf.ConnectorConfig{
 		{
-			Type:            "JetStreamToKafka",
-			Subject:         subject,
-			Topic:           topic,
-			DurableName:     durable,
-			StartAtSequence: 2,
+			Type:        "JetStreamToKafka",
+			Subject:     subject,
+			Topic:       topic,
+			DurableName: durable,
 			SASL: conf.SASL{
 				User:     saslUser,
 				Password: saslPassword,
