@@ -158,14 +158,7 @@ func (conn *BridgeConnector) jetStreamMessageHandler(msg kafka.Message) error {
 	nMsg.Header = conn.convertFromKafkaToNatsHeaders(msg.Headers)
 	nMsg.Data = msg.Value
 
-	maxWait := conn.bridge.config.JetStream.MaxWait
-	var ctx context.Context
-	var cancel context.CancelFunc
-	if maxWait > 0 {
-		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(maxWait)*time.Millisecond)
-	} else {
-		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), conn.jsTimeout(conn.bridge.config.JetStream.MaxWait))
 	defer cancel()
 
 	_, err := conn.bridge.JetStream().PublishMsg(ctx, nMsg)
@@ -372,13 +365,17 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string) (jetstream.Con
 		return nil, fmt.Errorf("bridge not configured to use JetStream")
 	}
 
-	ctx := context.Background()
+	maxWait := conn.bridge.config.JetStream.MaxWait
+
+	// Create a timeout-bounded context for JetStream API calls
+	apiCtx, apiCancel := context.WithTimeout(context.Background(), conn.jsTimeout(maxWait))
+	defer apiCancel()
 
 	// Determine the stream name
 	streamName := conn.config.Stream
 	if streamName == "" {
 		var err error
-		streamName, err = js.StreamNameBySubject(ctx, subject)
+		streamName, err = js.StreamNameBySubject(apiCtx, subject)
 		if err != nil {
 			return nil, fmt.Errorf("unable to find stream for subject %q: %w", subject, err)
 		}
@@ -407,19 +404,13 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string) (jetstream.Con
 		consumerCfg.DeliverPolicy = jetstream.DeliverAllPolicy
 	}
 
-	if d := conn.bridge.config.JetStream.HeartbeatInterval; d > 0 {
-		consumerCfg.InactiveThreshold = time.Duration(d) * time.Millisecond
-	}
-
-	consumer, err := js.CreateOrUpdateConsumer(ctx, streamName, consumerCfg)
+	consumer, err := js.CreateOrUpdateConsumer(apiCtx, streamName, consumerCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create consumer on stream %q: %w", streamName, err)
 	}
 
 	traceEnabled := conn.bridge.Logger().TraceEnabled()
 	ackSyncEnabled := conn.bridge.config.JetStream.EnableAckSync
-
-	maxWait := conn.bridge.config.JetStream.MaxWait
 
 	cc, err := consumer.Consume(func(msg jetstream.Msg) {
 		start := time.Now()
@@ -445,15 +436,11 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string) (jetstream.Con
 				conn.bridge.Logger().Tracef("%s wrote message to kafka with key %s", conn.String(), string(key))
 			}
 			if ackSyncEnabled {
-				var ackCtx context.Context
-				var ackCancel context.CancelFunc
-				if maxWait > 0 {
-					ackCtx, ackCancel = context.WithTimeout(context.Background(), time.Duration(maxWait)*time.Millisecond)
-				} else {
-					ackCtx, ackCancel = context.WithTimeout(context.Background(), 5*time.Second)
+				ackCtx, ackCancel := context.WithTimeout(context.Background(), conn.jsTimeout(maxWait))
+				defer ackCancel()
+				if err := msg.DoubleAck(ackCtx); err != nil {
+					conn.bridge.Logger().Errorf("ack sync failure, %s, %s", conn.String(), err.Error())
 				}
-				msg.DoubleAck(ackCtx)
-				ackCancel()
 			} else {
 				msg.Ack()
 			}
@@ -462,12 +449,22 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string) (jetstream.Con
 			}
 			conn.stats.AddRequest(l, l, time.Since(start))
 		}
-	})
+	}, jetstream.ConsumeErrHandler(func(cc jetstream.ConsumeContext, err error) {
+		conn.bridge.Logger().Errorf("consume error, %s, %s", conn.String(), err.Error())
+	}))
 	if err != nil {
 		return nil, fmt.Errorf("failed to start consuming: %w", err)
 	}
 
 	return cc, nil
+}
+
+// jsTimeout returns a timeout duration from MaxWait config, defaulting to 5s.
+func (conn *BridgeConnector) jsTimeout(maxWait int) time.Duration {
+	if maxWait > 0 {
+		return time.Duration(maxWait) * time.Millisecond
+	}
+	return 5 * time.Second
 }
 
 func (conn *BridgeConnector) setUpListener(target kafka.Consumer, natsCallbackFunc NATSCallback) (ShutdownCallback, error) {
