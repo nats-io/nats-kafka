@@ -28,6 +28,7 @@ import (
 	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nats-kafka/server/logging"
 	nats "github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	stan "github.com/nats-io/stan.go"
 )
 
@@ -47,7 +48,7 @@ type NATSKafkaBridge struct {
 	natsLock sync.Mutex
 	nats     *nats.Conn
 	stan     stan.Conn
-	js       nats.JetStreamContext
+	js       jetstream.JetStream
 
 	connectors []Connector
 
@@ -275,7 +276,7 @@ func (server *NATSKafkaBridge) Stan() stan.Conn {
 }
 
 // JetStream hosts a shared JetStream connection for the connectors
-func (server *NATSKafkaBridge) JetStream() nats.JetStreamContext {
+func (server *NATSKafkaBridge) JetStream() jetstream.JetStream {
 	server.natsLock.Lock()
 	defer server.natsLock.Unlock()
 	return server.js

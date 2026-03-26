@@ -17,12 +17,13 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/nats-io/nats-kafka/server/conf"
-	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/nats-io/nuid"
 	"github.com/stretchr/testify/require"
 )
@@ -46,7 +47,7 @@ func TestSimpleSendOnJetStreamReceiveOnKafka(t *testing.T) {
 
 	tbs.Bridge.checkConnections()
 
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)
@@ -94,7 +95,7 @@ func TestSimpleSASLSendOnJetStreamReceiveOnKafka(t *testing.T) {
 
 	tbs.Bridge.checkConnections()
 
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)
@@ -134,16 +135,16 @@ func TestJetStreamQueueStartAtPosition(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+	_, err = tbs.JS.CreateStream(context.Background(), jetstream.StreamConfig{
 		Name:     nuid.Next(),
 		Subjects: []string{subject},
 	})
 	require.NoError(t, err)
 
 	// Send 2 messages, should only get 2nd
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
-	_, err = tbs.JS.Publish(subject, []byte(msg2))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg2))
 	require.NoError(t, err)
 
 	err = tbs.StartBridge(connect)
@@ -187,16 +188,16 @@ func TestSASLJetStreamQueueStartAtPosition(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+	_, err = tbs.JS.CreateStream(context.Background(), jetstream.StreamConfig{
 		Name:     nuid.Next(),
 		Subjects: []string{subject},
 	})
 	require.NoError(t, err)
 
 	// Send 2 messages, should only get 2nd
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
-	_, err = tbs.JS.Publish(subject, []byte(msg2))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg2))
 	require.NoError(t, err)
 
 	err = tbs.StartBridge(connect)
@@ -235,16 +236,16 @@ func TestJetStreamQueueDeliverLatest(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+	_, err = tbs.JS.CreateStream(context.Background(), jetstream.StreamConfig{
 		Name:     nuid.Next(),
 		Subjects: []string{subject},
 	})
 	require.NoError(t, err)
 
 	// Send 2 messages, should only get 2nd
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	err = tbs.StartBridge(connect)
@@ -257,7 +258,7 @@ func TestJetStreamQueueDeliverLatest(t *testing.T) {
 	_, _, _, err = tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	// Should receive 1 message we just sent
@@ -294,16 +295,16 @@ func TestJetStreamSASLQueueDeliverLatest(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+	_, err = tbs.JS.CreateStream(context.Background(), jetstream.StreamConfig{
 		Name:     nuid.Next(),
 		Subjects: []string{subject},
 	})
 	require.NoError(t, err)
 
 	// Send 2 messages, should only get 2nd
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	err = tbs.StartBridge(connect)
@@ -316,7 +317,7 @@ func TestJetStreamSASLQueueDeliverLatest(t *testing.T) {
 	_, _, _, err = tbs.GetMessageFromKafka(reader, 5000)
 	require.NoError(t, err)
 
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	// Should receive 1 message we just sent
@@ -340,16 +341,16 @@ func TestJetStreamQueueStartAtTime(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+	_, err = tbs.JS.CreateStream(context.Background(), jetstream.StreamConfig{
 		Name:     nuid.Next(),
 		Subjects: []string{subject},
 	})
 	require.NoError(t, err)
 
 	// Send 2 messages, should only get 2nd
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	time.Sleep(2 * time.Second) // move the time along
@@ -368,7 +369,7 @@ func TestJetStreamQueueStartAtTime(t *testing.T) {
 
 	time.Sleep(1 * time.Second) // move the time along
 
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)
@@ -395,16 +396,16 @@ func TestJetStreamSASLQueueStartAtTime(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+	_, err = tbs.JS.CreateStream(context.Background(), jetstream.StreamConfig{
 		Name:     nuid.Next(),
 		Subjects: []string{subject},
 	})
 	require.NoError(t, err)
 
 	// Send 2 messages, should only get 2nd
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	time.Sleep(2 * time.Second) // move the time along
@@ -427,7 +428,7 @@ func TestJetStreamSASLQueueStartAtTime(t *testing.T) {
 
 	time.Sleep(1 * time.Second) // move the time along
 
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)
@@ -454,12 +455,19 @@ func TestJetStreamQueueDurableSubscriber(t *testing.T) {
 	defer tbs.Close()
 
 	stream := nuid.Next()
-	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+	_, err = tbs.JS.CreateStream(context.Background(), jetstream.StreamConfig{
 		Name:     stream,
 		Subjects: []string{subject},
 	})
 	require.NoError(t, err)
 	durable := nuid.Next()
+	_, err = tbs.JS.CreateOrUpdateConsumer(context.Background(), stream, jetstream.ConsumerConfig{
+		Durable:       durable,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		DeliverPolicy: jetstream.DeliverAllPolicy,
+	})
+	require.NoError(t, err)
+
 	connect := []conf.ConnectorConfig{
 		{
 			Type:        "JetStreamToKafka",
@@ -472,17 +480,17 @@ func TestJetStreamQueueDurableSubscriber(t *testing.T) {
 	err = tbs.StartBridge(connect)
 	require.NoError(t, err)
 
-	_, err = tbs.JS.Publish(subject, []byte("one"))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte("one"))
 	require.NoError(t, err)
 
 	tbs.WaitForRequests(1) // get that request through the system
 
 	tbs.StopBridge()
 
-	_, err = tbs.JS.Publish(subject, []byte("two"))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte("two"))
 	require.NoError(t, err)
 
-	_, err = tbs.JS.Publish(subject, []byte("three"))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte("three"))
 	require.NoError(t, err)
 
 	err = tbs.StartBridge(connect)
@@ -519,12 +527,18 @@ func TestJetStreamSASLQueueDurableSubscriber(t *testing.T) {
 	defer tbs.Close()
 
 	stream := nuid.Next()
-	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+	_, err = tbs.JS.CreateStream(context.Background(), jetstream.StreamConfig{
 		Name:     stream,
 		Subjects: []string{subject},
 	})
 	require.NoError(t, err)
 	durable := nuid.Next()
+	_, err = tbs.JS.CreateOrUpdateConsumer(context.Background(), stream, jetstream.ConsumerConfig{
+		Durable:       durable,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		DeliverPolicy: jetstream.DeliverAllPolicy,
+	})
+	require.NoError(t, err)
 
 	connect := []conf.ConnectorConfig{
 		{
@@ -542,17 +556,17 @@ func TestJetStreamSASLQueueDurableSubscriber(t *testing.T) {
 	err = tbs.StartBridge(connect)
 	require.NoError(t, err)
 
-	_, err = tbs.JS.Publish(subject, []byte("one"))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte("one"))
 	require.NoError(t, err)
 
 	tbs.WaitForRequests(1) // get that request through the system
 
 	tbs.StopBridge()
 
-	_, err = tbs.JS.Publish(subject, []byte("two"))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte("two"))
 	require.NoError(t, err)
 
-	_, err = tbs.JS.Publish(subject, []byte("three"))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte("three"))
 	require.NoError(t, err)
 
 	err = tbs.StartBridge(connect)
@@ -597,7 +611,7 @@ func TestSimpleSendOnJetStreamReceiveOnKafkaWithTLS(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)
@@ -627,7 +641,7 @@ func TestFixedKeyFromJetStream(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)
@@ -662,7 +676,7 @@ func TestSASLFixedKeyFromJetStream(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)
@@ -692,7 +706,7 @@ func TestSubjectKeyFromJetStream(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)
@@ -726,7 +740,7 @@ func TestSASLSubjectKeyFromJetStream(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)
@@ -757,7 +771,7 @@ func TestSubjectRegexKeyFromJetStream(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.Publish(fmt.Sprintf("%s.alpha", prefix), []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), fmt.Sprintf("%s.alpha", prefix), []byte(msg))
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)
@@ -792,7 +806,7 @@ func TestSASLSubjectRegexKeyFromJetStream(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.Publish(fmt.Sprintf("%s.alpha", prefix), []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), fmt.Sprintf("%s.alpha", prefix), []byte(msg))
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)
@@ -824,7 +838,7 @@ func TestReplyKeyFromJetStream(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)
@@ -860,7 +874,7 @@ func TestSASLReplyKeyFromJetStream(t *testing.T) {
 	require.NoError(t, err)
 	defer tbs.Close()
 
-	_, err = tbs.JS.Publish(subject, []byte(msg))
+	_, err = tbs.JS.Publish(context.Background(), subject, []byte(msg))
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)
@@ -907,13 +921,13 @@ func TestJetStreamSourcesConsumedByKafka(t *testing.T) {
 
 	tbs.Bridge.checkConnections()
 
-	_, err = tbs.JS.Publish("foo.one", []byte("one"))
+	_, err = tbs.JS.Publish(context.Background(), "foo.one", []byte("one"))
 	require.NoError(t, err)
-	_, err = tbs.JS.Publish("foo.two", []byte("two"))
+	_, err = tbs.JS.Publish(context.Background(), "foo.two", []byte("two"))
 	require.NoError(t, err)
-	_, err = tbs.JS.Publish("foo.one.1", []byte("another one"))
+	_, err = tbs.JS.Publish(context.Background(), "foo.one.1", []byte("another one"))
 	require.NoError(t, err)
-	_, err = tbs.JS.Publish("foo.three", []byte("three"))
+	_, err = tbs.JS.Publish(context.Background(), "foo.three", []byte("three"))
 	require.NoError(t, err)
 
 	reader := tbs.CreateReader(topic, 5000)

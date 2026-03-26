@@ -46,7 +46,7 @@ func TestSimpleSendOnKafkaReceiveOnJetStream(t *testing.T) {
 
 	done := make(chan string)
 
-	sub, err := tbs.JS.Subscribe(subject, func(msg *nats.Msg) {
+	sub, err := tbs.NC.Subscribe(subject, func(msg *nats.Msg) {
 		done <- string(msg.Data)
 	})
 	require.NoError(t, err)
@@ -94,7 +94,7 @@ func TestSimpleSASLSendOnKafkaReceiveOnJetStream(t *testing.T) {
 
 	done := make(chan string)
 
-	sub, err := tbs.JS.Subscribe(subject, func(msg *nats.Msg) {
+	sub, err := tbs.NC.Subscribe(subject, func(msg *nats.Msg) {
 		done <- string(msg.Data)
 	})
 	require.NoError(t, err)
@@ -147,7 +147,7 @@ func TestSimpleSendOnKafkaReceiveOnJetStreamWithGroup(t *testing.T) {
 
 	done := make(chan string)
 
-	sub, err := tbs.JS.Subscribe(subject, func(msg *nats.Msg) {
+	sub, err := tbs.NC.Subscribe(subject, func(msg *nats.Msg) {
 		done <- string(msg.Data)
 	})
 	require.NoError(t, err)
@@ -241,7 +241,7 @@ func TestSimpleSendOnQueueReceiveOnJetStreamWithTLS(t *testing.T) {
 
 	done := make(chan string)
 
-	sub, err := tbs.JS.Subscribe(subject, func(msg *nats.Msg) {
+	sub, err := tbs.NC.Subscribe(subject, func(msg *nats.Msg) {
 		done <- string(msg.Data)
 	})
 	require.NoError(t, err)

@@ -20,13 +20,13 @@ import (
 	"fmt"
 
 	"github.com/nats-io/nats-kafka/server/conf"
-	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 // JetStream2KafkaConnector connects a JetStream stream to Kafka
 type JetStream2KafkaConnector struct {
 	BridgeConnector
-	sub *nats.Subscription
+	cc jetstream.ConsumeContext
 }
 
 // NewJetStream2KafkaConnector create a new stan to kafka
@@ -47,11 +47,11 @@ func (conn *JetStream2KafkaConnector) Start() error {
 
 	conn.bridge.Logger().Tracef("starting connection %s", conn.String())
 
-	sub, err := conn.subscribeToJetStream(conn.config.Subject, conn.config.QueueName)
+	cc, err := conn.subscribeToJetStream(conn.config.Subject)
 	if err != nil {
 		return err
 	}
-	conn.sub = sub
+	conn.cc = cc
 
 	conn.stats.AddConnect()
 	conn.bridge.Logger().Tracef("opened and reading %s", conn.config.Subject)
@@ -69,10 +69,10 @@ func (conn *JetStream2KafkaConnector) Shutdown() error {
 
 	conn.bridge.Logger().Noticef("shutting down connection %s", conn.String())
 
-	if conn.sub != nil {
-		conn.bridge.Logger().Tracef("unsubscribing from %s", conn.config.Subject)
-		conn.sub.Unsubscribe()
-		conn.sub = nil
+	if conn.cc != nil {
+		conn.bridge.Logger().Tracef("stopping consumer for %s", conn.config.Subject)
+		conn.cc.Stop()
+		conn.cc = nil
 	}
 
 	return nil
