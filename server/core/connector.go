@@ -262,12 +262,21 @@ func (conn *BridgeConnector) subscribeToNATS(subject string, queueName string) (
 	callback := func(msg *nats.Msg) {
 		start := time.Now()
 		l := int64(len(msg.Data))
+		headers := conn.convertFromNatsToKafkaHeaders(msg.Header)
+
+		// append nats-time header if available
+		if md, mdErr := msg.Metadata(); mdErr == nil && md != nil {
+			headers = append(headers, sarama.RecordHeader{
+				Key:   []byte("nats-time"),
+				Value: []byte(md.Timestamp.Format(time.RFC3339Nano)),
+			})
+		}
 
 		// send to kafka here
 		err := conn.writer(msg).Write(kafka.Message{
 			Key:     conn.calculateKey(msg.Subject, msg.Reply),
 			Value:   msg.Data,
-			Headers: conn.convertFromNatsToKafkaHeaders(msg.Header),
+			Headers: headers,
 		})
 
 		if err != nil {
@@ -398,10 +407,20 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string, queueName stri
 		}
 
 		key := conn.calculateKey(conn.config.Subject, conn.config.DurableName)
+		headers := conn.convertFromNatsToKafkaHeaders(msg.Header)
+
+		//append nats-time header if available
+		if md, mdErr := msg.Metadata(); mdErr == nil && md != nil {
+			headers = append(headers, sarama.RecordHeader{
+				Key:   []byte("nats-time"),
+				Value: []byte(md.Timestamp.Format(time.RFC3339Nano)),
+			})
+		}
+
 		err := conn.writer(msg).Write(kafka.Message{
 			Key:     key,
 			Value:   msg.Data,
-			Headers: conn.convertFromNatsToKafkaHeaders(msg.Header),
+			Headers: headers,
 		})
 
 		if err != nil {
