@@ -358,7 +358,7 @@ func (conn *BridgeConnector) subscribeToChannel() (stan.Subscription, error) {
 	return sub, err
 }
 
-// subscribeToJetStream sets up a JetStream consumer and starts consuming, assumes the lock is held
+// subscribeToJetStream sets up a push consumer and starts consuming, assumes the lock is held
 func (conn *BridgeConnector) subscribeToJetStream(subject string) (jetstream.ConsumeContext, error) {
 	js := conn.bridge.JetStream()
 	if js == nil {
@@ -381,14 +381,19 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string) (jetstream.Con
 		}
 	}
 
-	// Build consumer config
+	// Build push consumer config
 	consumerCfg := jetstream.ConsumerConfig{
-		AckPolicy:     jetstream.AckExplicitPolicy,
-		FilterSubject: subject,
+		AckPolicy:      jetstream.AckExplicitPolicy,
+		FilterSubject:  subject,
+		DeliverSubject: nats.NewInbox(),
 	}
 
 	if conn.config.DurableName != "" {
 		consumerCfg.Durable = conn.config.DurableName
+	}
+
+	if conn.config.QueueName != "" {
+		consumerCfg.DeliverGroup = conn.config.QueueName
 	}
 
 	if conn.config.StartAtTime != 0 {
@@ -404,9 +409,16 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string) (jetstream.Con
 		consumerCfg.DeliverPolicy = jetstream.DeliverAllPolicy
 	}
 
-	consumer, err := js.CreateOrUpdateConsumer(apiCtx, streamName, consumerCfg)
+	if conn.bridge.config.JetStream.EnableFlowControl {
+		consumerCfg.FlowControl = true
+	}
+	if d := conn.bridge.config.JetStream.HeartbeatInterval; d > 0 {
+		consumerCfg.IdleHeartbeat = time.Duration(d) * time.Millisecond
+	}
+
+	consumer, err := js.CreateOrUpdatePushConsumer(apiCtx, streamName, consumerCfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create consumer on stream %q: %w", streamName, err)
+		return nil, fmt.Errorf("failed to create push consumer on stream %q: %w", streamName, err)
 	}
 
 	traceEnabled := conn.bridge.Logger().TraceEnabled()
@@ -431,6 +443,7 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string) (jetstream.Con
 		if err != nil {
 			conn.stats.AddMessageIn(l)
 			conn.bridge.Logger().Errorf("connector publish failure, %s, %s", conn.String(), err.Error())
+			_ = msg.Nak() // request immediate redelivery
 		} else {
 			if traceEnabled {
 				conn.bridge.Logger().Tracef("%s wrote message to kafka with key %s", conn.String(), string(key))
