@@ -9,7 +9,7 @@ require (
 	github.com/linkedin/goavro/v2 v2.12.0
 	github.com/nats-io/nats-server/v2 v2.12.6
 	github.com/nats-io/nats-streaming-server v0.25.2
-	github.com/nats-io/nats.go v1.49.0
+	github.com/nats-io/nats.go v1.50.0
 	github.com/nats-io/nuid v1.0.1
 	github.com/nats-io/stan.go v0.10.3
 	github.com/orcaman/concurrent-map v1.0.0
@@ -57,7 +57,7 @@ require (
 	github.com/jcmturner/gofork v1.7.6 // indirect
 	github.com/jcmturner/gokrb5/v8 v8.4.4 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
-	github.com/klauspost/compress v1.18.4 // indirect
+	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/mattn/go-colorable v0.1.8 // indirect
 	github.com/mattn/go-isatty v0.0.13 // indirect
 	github.com/minio/highwayhash v1.0.4-0.20251030100505-070ab1a87a76 // indirect

@@ -32,6 +32,7 @@ import (
 	"github.com/nats-io/nats-kafka/server/conf"
 	"github.com/nats-io/nats-kafka/server/kafka"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/nats-io/nuid"
 	"github.com/nats-io/stan.go"
 )
@@ -156,7 +157,11 @@ func (conn *BridgeConnector) jetStreamMessageHandler(msg kafka.Message) error {
 	nMsg := nats.NewMsg(conn.dest(msg))
 	nMsg.Header = conn.convertFromKafkaToNatsHeaders(msg.Headers)
 	nMsg.Data = msg.Value
-	_, err := conn.bridge.JetStream().PublishMsg(nMsg)
+
+	ctx, cancel := context.WithTimeout(context.Background(), conn.jsTimeout(conn.bridge.config.JetStream.MaxWait))
+	defer cancel()
+
+	_, err := conn.bridge.JetStream().PublishMsg(ctx, nMsg)
 	return err
 }
 
@@ -353,45 +358,76 @@ func (conn *BridgeConnector) subscribeToChannel() (stan.Subscription, error) {
 	return sub, err
 }
 
-// set up a JetStream subscription, assumes the lock is held
-func (conn *BridgeConnector) subscribeToJetStream(subject string, queueName string) (*nats.Subscription, error) {
-	if conn.bridge.JetStream() == nil {
+// subscribeToJetStream sets up a push consumer and starts consuming, assumes the lock is held
+func (conn *BridgeConnector) subscribeToJetStream(subject string) (jetstream.ConsumeContext, error) {
+	js := conn.bridge.JetStream()
+	if js == nil {
 		return nil, fmt.Errorf("bridge not configured to use JetStream")
 	}
 
-	options := []nats.SubOpt{nats.AckExplicit()}
+	maxWait := conn.bridge.config.JetStream.MaxWait
+
+	// Create a timeout-bounded context for JetStream API calls
+	apiCtx, apiCancel := context.WithTimeout(context.Background(), conn.jsTimeout(maxWait))
+	defer apiCancel()
+
+	// Determine the stream name
+	streamName := conn.config.Stream
+	if streamName == "" {
+		var err error
+		streamName, err = js.StreamNameBySubject(apiCtx, subject)
+		if err != nil {
+			return nil, fmt.Errorf("unable to find stream for subject %q: %w", subject, err)
+		}
+	}
+
+	// Build push consumer config
+	consumerCfg := jetstream.ConsumerConfig{
+		AckPolicy:      jetstream.AckExplicitPolicy,
+		FilterSubject:  subject,
+		DeliverSubject: nats.NewInbox(),
+	}
 
 	if conn.config.DurableName != "" {
-		options = append(options, nats.Durable(conn.config.DurableName))
+		consumerCfg.Durable = conn.config.DurableName
+	}
+
+	if conn.config.QueueName != "" {
+		consumerCfg.DeliverGroup = conn.config.QueueName
 	}
 
 	if conn.config.StartAtTime != 0 {
 		t := time.Unix(conn.config.StartAtTime, 0)
-		options = append(options, nats.StartTime(t))
+		consumerCfg.DeliverPolicy = jetstream.DeliverByStartTimePolicy
+		consumerCfg.OptStartTime = &t
 	} else if conn.config.StartAtSequence == -1 {
-		options = append(options, nats.DeliverLast())
+		consumerCfg.DeliverPolicy = jetstream.DeliverLastPolicy
 	} else if conn.config.StartAtSequence > 0 {
-		options = append(options, nats.StartSequence(uint64(conn.config.StartAtSequence)))
+		consumerCfg.DeliverPolicy = jetstream.DeliverByStartSequencePolicy
+		consumerCfg.OptStartSeq = uint64(conn.config.StartAtSequence)
 	} else {
-		options = append(options, nats.DeliverAll())
+		consumerCfg.DeliverPolicy = jetstream.DeliverAllPolicy
 	}
 
 	if conn.bridge.config.JetStream.EnableFlowControl {
-		options = append(options, nats.EnableFlowControl())
+		consumerCfg.FlowControl = true
 	}
 	if d := conn.bridge.config.JetStream.HeartbeatInterval; d > 0 {
-		options = append(options, nats.IdleHeartbeat(time.Duration(d)*time.Millisecond))
+		consumerCfg.IdleHeartbeat = time.Duration(d) * time.Millisecond
 	}
-	if len(conn.config.Stream) > 0 {
-		options = append(options, nats.BindStream(conn.config.Stream))
+
+	consumer, err := js.CreateOrUpdatePushConsumer(apiCtx, streamName, consumerCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create push consumer on stream %q: %w", streamName, err)
 	}
 
 	traceEnabled := conn.bridge.Logger().TraceEnabled()
 	ackSyncEnabled := conn.bridge.config.JetStream.EnableAckSync
 
-	callback := func(msg *nats.Msg) {
+	cc, err := consumer.Consume(func(msg jetstream.Msg) {
 		start := time.Now()
-		l := int64(len(msg.Data))
+		data := msg.Data()
+		l := int64(len(data))
 
 		if traceEnabled {
 			conn.bridge.Logger().Tracef("%s received message", conn.String())
@@ -400,34 +436,50 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string, queueName stri
 		key := conn.calculateKey(conn.config.Subject, conn.config.DurableName)
 		err := conn.writer(msg).Write(kafka.Message{
 			Key:     key,
-			Value:   msg.Data,
-			Headers: conn.convertFromNatsToKafkaHeaders(msg.Header),
+			Value:   data,
+			Headers: conn.convertFromNatsToKafkaHeaders(msg.Headers()),
 		})
 
 		if err != nil {
 			conn.stats.AddMessageIn(l)
 			conn.bridge.Logger().Errorf("connector publish failure, %s, %s", conn.String(), err.Error())
+			_ = msg.Nak() // request immediate redelivery
 		} else {
 			if traceEnabled {
 				conn.bridge.Logger().Tracef("%s wrote message to kafka with key %s", conn.String(), string(key))
 			}
 			if ackSyncEnabled {
-				msg.AckSync()
+				ackCtx, ackCancel := context.WithTimeout(context.Background(), conn.jsTimeout(maxWait))
+				defer ackCancel()
+				if err := msg.DoubleAck(ackCtx); err != nil {
+					conn.bridge.Logger().Errorf("ack sync failure, %s, %s", conn.String(), err.Error())
+				}
 			} else {
-				msg.Ack()
+				if err := msg.Ack(); err != nil {
+					conn.bridge.Logger().Errorf("ack failure, %s, %s", conn.String(), err.Error())
+				}
 			}
 			if traceEnabled {
 				conn.bridge.Logger().Tracef("%s acked message to kafka", conn.String())
 			}
 			conn.stats.AddRequest(l, l, time.Since(start))
 		}
+	}, jetstream.ConsumeErrHandler(func(_ jetstream.ConsumeContext, err error) {
+		conn.bridge.Logger().Errorf("consume error, %s, %s", conn.String(), err.Error())
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("failed to start consuming: %w", err)
 	}
 
-	if queueName == "" {
-		return conn.bridge.JetStream().Subscribe(subject, callback, options...)
-	}
+	return cc, nil
+}
 
-	return conn.bridge.JetStream().QueueSubscribe(subject, queueName, callback, options...)
+// jsTimeout returns a timeout duration from MaxWait config, defaulting to 5s.
+func (conn *BridgeConnector) jsTimeout(maxWait int) time.Duration {
+	if maxWait > 0 {
+		return time.Duration(maxWait) * time.Millisecond
+	}
+	return 5 * time.Second
 }
 
 func (conn *BridgeConnector) setUpListener(target kafka.Consumer, natsCallbackFunc NATSCallback) (ShutdownCallback, error) {

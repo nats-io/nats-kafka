@@ -31,6 +31,7 @@ import (
 	gnatsd "github.com/nats-io/nats-server/v2/test"
 	nss "github.com/nats-io/nats-streaming-server/server"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/nats-io/nuid"
 	"github.com/nats-io/stan.go"
 )
@@ -52,9 +53,9 @@ type TestEnv struct {
 	Stan          *nss.StanServer
 	KafkaHostPort string
 
-	NC *nats.Conn            // for bypassing the bridge
-	SC stan.Conn             // for bypassing the bridge
-	JS nats.JetStreamContext // for bypassing the bridge
+	NC *nats.Conn          // for bypassing the bridge
+	SC stan.Conn           // for bypassing the bridge
+	JS jetstream.JetStream // for bypassing the bridge
 
 	natsPort       int
 	natsURL        string
@@ -95,11 +96,12 @@ func StartTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, error) 
 		return nil, err
 	}
 
+	ctx := context.Background()
 	for _, cc := range connections {
 		if !strings.Contains(cc.Type, "JetStream") {
 			continue
 		}
-		_, err := tbs.JS.AddStream(&nats.StreamConfig{
+		_, err := tbs.JS.CreateStream(ctx, jetstream.StreamConfig{
 			Name:     nuid.Next(),
 			Subjects: []string{cc.Subject},
 		})
@@ -123,11 +125,12 @@ func StartTLSTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, erro
 	if err != nil {
 		return nil, err
 	}
+	ctx := context.Background()
 	for _, cc := range connections {
 		if !strings.Contains(cc.Type, "JetStream") {
 			continue
 		}
-		_, err := tbs.JS.AddStream(&nats.StreamConfig{
+		_, err := tbs.JS.CreateStream(ctx, jetstream.StreamConfig{
 			Name:     nuid.Next(),
 			Subjects: []string{cc.Subject},
 		})
@@ -152,11 +155,12 @@ func StartSASLTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, err
 	}
 	tbs.user = saslUser
 	tbs.password = saslPassword
+	ctx := context.Background()
 	for _, cc := range connections {
 		if !strings.Contains(cc.Type, "JetStream") {
 			continue
 		}
-		_, err := tbs.JS.AddStream(&nats.StreamConfig{
+		_, err := tbs.JS.CreateStream(ctx, jetstream.StreamConfig{
 			Name:     nuid.Next(),
 			Subjects: []string{cc.Subject},
 		})
@@ -178,37 +182,38 @@ func StartTestEnvironmentWithSources(connections []conf.ConnectorConfig) (*TestE
 		return nil, err
 	}
 
-	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+	ctx := context.Background()
+	_, err = tbs.JS.CreateStream(ctx, jetstream.StreamConfig{
 		Name:     "FOO_1",
 		Subjects: []string{"foo.one"},
 	})
 	if err != nil {
 		return nil, err
 	}
-	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+	_, err = tbs.JS.CreateStream(ctx, jetstream.StreamConfig{
 		Name:     "FOO_2",
 		Subjects: []string{"foo.two"},
 	})
 	if err != nil {
 		return nil, err
 	}
-	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+	_, err = tbs.JS.CreateStream(ctx, jetstream.StreamConfig{
 		Name:     "FOO_3",
 		Subjects: []string{"foo.three"},
 	})
 	if err != nil {
 		return nil, err
 	}
-	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+	_, err = tbs.JS.CreateStream(ctx, jetstream.StreamConfig{
 		Name:     "SUB_FOO_1",
 		Subjects: []string{"foo.one.1"},
 	})
 	if err != nil {
 		return nil, err
 	}
-	_, err = tbs.JS.AddStream(&nats.StreamConfig{
+	_, err = tbs.JS.CreateStream(ctx, jetstream.StreamConfig{
 		Name: "FOO_GLOBAL",
-		Sources: []*nats.StreamSource{
+		Sources: []*jetstream.StreamSource{
 			{Name: "FOO_1"},
 			{Name: "FOO_2"},
 			{Name: "FOO_3"},
@@ -434,7 +439,7 @@ func (tbs *TestEnv) StartNATSandStan(port int, clusterID string, clientID string
 	}
 	tbs.SC = sc
 
-	js, err := nc.JetStream()
+	js, err := jetstream.New(nc)
 	if err != nil {
 		return err
 	}

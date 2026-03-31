@@ -22,6 +22,7 @@ import (
 	"time"
 
 	nats "github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	stan "github.com/nats-io/stan.go"
 )
 
@@ -188,16 +189,13 @@ func (server *NATSKafkaBridge) connectToJetStream() error {
 
 	server.logger.Noticef("connecting to JetStream")
 
-	var opts []nats.JSOpt
+	var opts []jetstream.JetStreamOpt
 	c := server.config.JetStream
-	if c.MaxWait > 0 {
-		opts = append(opts, nats.MaxWait(time.Duration(c.MaxWait)*time.Millisecond))
-	}
 	if c.PublishAsyncMaxPending > 0 {
-		opts = append(opts, nats.PublishAsyncMaxPending(c.PublishAsyncMaxPending))
+		opts = append(opts, jetstream.WithPublishAsyncMaxPending(c.PublishAsyncMaxPending))
 	}
 
-	js, err := server.nats.JetStream(opts...)
+	js, err := jetstream.New(server.nats, opts...)
 	if err != nil {
 		return err
 	}
