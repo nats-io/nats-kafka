@@ -358,7 +358,7 @@ func (conn *BridgeConnector) subscribeToChannel() (stan.Subscription, error) {
 	return sub, err
 }
 
-// subscribeToJetStream sets up a pull consumer and starts consuming, assumes the lock is held
+// subscribeToJetStream sets up a JetStream consumer and starts consuming, assumes the lock is held
 func (conn *BridgeConnector) subscribeToJetStream(subject string) (jetstream.ConsumeContext, error) {
 	js := conn.bridge.JetStream()
 	if js == nil {
@@ -442,14 +442,16 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string) (jetstream.Con
 					conn.bridge.Logger().Errorf("ack sync failure, %s, %s", conn.String(), err.Error())
 				}
 			} else {
-				msg.Ack()
+				if err := msg.Ack(); err != nil {
+					conn.bridge.Logger().Errorf("ack failure, %s, %s", conn.String(), err.Error())
+				}
 			}
 			if traceEnabled {
 				conn.bridge.Logger().Tracef("%s acked message to kafka", conn.String())
 			}
 			conn.stats.AddRequest(l, l, time.Since(start))
 		}
-	}, jetstream.ConsumeErrHandler(func(cc jetstream.ConsumeContext, err error) {
+	}, jetstream.ConsumeErrHandler(func(_ jetstream.ConsumeContext, err error) {
 		conn.bridge.Logger().Errorf("consume error, %s, %s", conn.String(), err.Error())
 	}))
 	if err != nil {
