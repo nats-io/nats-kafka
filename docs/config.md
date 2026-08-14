@@ -132,6 +132,8 @@ Is used to configure an HTTP or HTTPS port, as well as TLS settings when HTTPS i
 
 * `httpsport` - the port for HTTPS monitoring, a TLS configuration is expected, a value of -1 will tell the server to use an ephemeral port, the port will be logged on startup.
 * `tls` - a [TLS configuration](#tls).
+* `disablemetrics` - turn off the Prometheus [/metrics](monitoring.md#metrics) endpoint, which is otherwise served whenever monitoring is enabled.
+* `disabledashboard` - turn off the browser [/dashboard](monitoring.md#dashboard) page, which is otherwise served whenever monitoring is enabled.
 
 The `httpport` and `httpsport` settings are mutually exclusive, if both are set to a non-zero value the bridge will not start.
 

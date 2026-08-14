@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<!--
+ Copyright 2026 The NATS Authors
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+<html lang="en" id="nats-kafka-bridge-dashboard">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NATS-Kafka Bridge</title>
+<style>
+:root {
+  color-scheme: light;
+  --page:           #f9f9f7;
+  --surface:        #fcfcfb;
+  --ink:            #0b0b0b;
+  --ink-2:          #52514e;
+  --muted:          #898781;
+  --grid:           #e1e0d9;
+  --baseline:       #c3c2b7;
+  --border:         rgba(11,11,11,0.10);
+  --series-in:      #2a78d6; /* blue: data arriving at the bridge */
+  --series-out:     #eb6834; /* orange: data leaving the bridge */
+  --seq-1:          #86b6ef;
+  --seq-2:          #3987e5;
+  --seq-3:          #1c5cab;
+  --seq-4:          #0d366b;
+  --status-good:    #0ca30c;
+  --status-crit:    #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page:         #0d0d0d;
+    --surface:      #1a1a19;
+    --ink:          #ffffff;
+    --ink-2:        #c3c2b7;
+    --muted:        #898781;
+    --grid:         #2c2c2a;
+    --baseline:     #383835;
+    --border:       rgba(255,255,255,0.10);
+    --series-in:    #3987e5;
+    --series-out:   #d95926;
+    --seq-1:        #184f95;
+    --seq-2:        #2a78d6;
+    --seq-3:        #5598e7;
+    --seq-4:        #9ec5f4;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--page);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  padding: 20px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+header h1 { font-size: 18px; font-weight: 600; }
+header .sub { color: var(--muted); font-size: 12px; }
+#stale-banner {
+  display: none;
+  background: var(--status-crit); color: #fff;
+  padding: 6px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 12px;
+}
+body.stale #stale-banner { display: block; }
+body.stale .card, body.stale .tiles { opacity: 0.55; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.tile {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 12px; min-width: 0;
+}
+.tile .label { color: var(--ink-2); font-size: 12px; margin-bottom: 4px; }
+.tile .value { font-size: 22px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile .detail { color: var(--muted); font-size: 11px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; }
+.pill .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px; margin-bottom: 14px; position: relative; min-width: 0;
+}
+.card h2 { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+.card .desc { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+.legend { display: flex; gap: 14px; font-size: 11px; color: var(--ink-2); margin-bottom: 6px; flex-wrap: wrap; }
+.legend .key { display: inline-flex; align-items: center; gap: 5px; }
+.legend .stroke { width: 14px; height: 2px; border-radius: 1px; }
+.legend .swatch { width: 8px; height: 8px; border-radius: 50%; }
+.chart-wrap { position: relative; }
+.chart-wrap svg { display: block; width: 100%; height: auto; }
+.tooltip {
+  position: absolute; pointer-events: none; display: none; z-index: 5;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  padding: 6px 9px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  white-space: nowrap;
+}
+.tooltip .t { color: var(--muted); font-size: 11px; margin-bottom: 3px; }
+.tooltip .row { display: flex; align-items: center; gap: 6px; }
+.tooltip .row .stroke { width: 10px; height: 2px; border-radius: 1px; flex: none; }
+.tooltip .row b { font-weight: 600; }
+.tooltip .row span { color: var(--ink-2); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: right; color: var(--muted); font-weight: 500; font-size: 11px;
+  padding: 4px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap;
+}
+th:first-child, td:first-child { text-align: left; }
+td {
+  text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+tr:last-child td { border-bottom: none; }
+td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+td .conn-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; }
+.empty { color: var(--muted); font-size: 12px; padding: 12px 0; }
+.lat-row { display: grid; grid-template-columns: 220px 1fr; gap: 10px; align-items: center; margin-bottom: 4px; }
+.lat-row .lname { font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+footer { color: var(--muted); font-size: 11px; margin-top: 8px; }
+footer a { color: var(--ink-2); }
+</style>
+</head>
+<body>
+<header>
+  <h1>NATS-Kafka Bridge</h1>
+  <span class="sub" id="uptime"></span>
+  <span class="sub" id="poll-info"></span>
+</header>
+<div id="stale-banner">Disconnected from the bridge. Retrying&hellip;</div>
+
+<div class="tiles" id="tiles"></div>
+
+<div class="grid2">
+  <div class="card">
+    <h2>NATS wire traffic</h2>
+    <div class="desc">Bytes per second summed across all NATS cluster connections, measured by the NATS client.</div>
+    <div class="legend">
+      <span class="key"><span class="stroke" style="background:var(--series-in)"></span>read from NATS</span>
+      <span class="key"><span class="stroke" style="background:var(--series-out)"></span>written to NATS</span>
+    </div>
+    <div class="chart-wrap" id="chart-wire"></div>
+  </div>
+  <div class="card">
+    <h2>Connector message rate</h2>
+    <div class="desc">Messages per second summed across all connectors.</div>
+    <div class="legend">
+      <span class="key"><span class="stroke" style="background:var(--series-in)"></span>read from source</span>
+      <span class="key"><span class="stroke" style="background:var(--series-out)"></span>delivered to destination</span>
+    </div>
+    <div class="chart-wrap" id="chart-msgs"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Connectors</h2>
+  <div class="desc">Rates are computed from the last two samples. A gap between in and out counts failed deliveries.</div>
+  <div id="conn-table"></div>
+</div>
+
+<div class="card">
+  <h2>Message handling latency</h2>
+  <div class="desc">Lifetime quantiles of end-to-end handling time per connector, in milliseconds.</div>
+  <div class="legend">
+    <span class="key"><span class="swatch" style="background:var(--seq-1)"></span>q50</span>
+    <span class="key"><span class="swatch" style="background:var(--seq-2)"></span>q75</span>
+    <span class="key"><span class="swatch" style="background:var(--seq-3)"></span>q90</span>
+    <span class="key"><span class="swatch" style="background:var(--seq-4)"></span>q95</span>
+  </div>
+  <div id="latency"></div>
+</div>
+
+<footer>Raw data: <a href="/varz">/varz</a> &middot; Prometheus: <a href="/metrics">/metrics</a></footer>
+
+<script>
+"use strict";
+
+const POLL_MS = 3000;
+const MAX_SAMPLES = 100;
+
+// history entries: {t, wireIn, wireOut, msgIn, msgOut}
+const history = [];
+// per-connector ring buffers of message-in rates for sparklines, keyed by name
+const connHistory = new Map();
+let prevSample = null;
+
+function fmtNum(v) {
+  if (!isFinite(v)) return "0";
+  if (v >= 1e9) return (v / 1e9).toFixed(1) + "B";
+  if (v >= 1e6) return (v / 1e6).toFixed(1) + "M";
+  if (v >= 1e3) return (v / 1e3).toFixed(1) + "K";
+  return v >= 100 ? Math.round(v).toString() : (Math.round(v * 10) / 10).toString();
+}
+function fmtBytes(v) {
+  if (!isFinite(v) || v < 0) v = 0;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  if (i === 0) {
+    // one decimal keeps sub-10 axis ticks distinct (0.4 B/s vs 0.8 B/s)
+    return (v >= 10 || Number.isInteger(v) ? Math.round(v) : v.toFixed(1)) + " B";
+  }
+  return v.toFixed(1) + " " + units[i];
+}
+function fmtMs(ns) {
+  if (!isFinite(ns) || ns < 0) return "-";
+  const ms = ns / 1e6;
+  if (ms >= 1000) return (ms / 1000).toFixed(2) + " s";
+  if (ms >= 10) return Math.round(ms) + " ms";
+  return ms.toFixed(2) + " ms";
+}
+function fmtUptime(s) {
+  // trim Go duration fractions: "1m13.425902542s" -> "1m13s"
+  return String(s).replace(/(\d+)\.\d+s/, "$1s");
+}
+function rate(curr, prev, dt) {
+  if (prev === undefined || prev === null || dt <= 0) return 0;
+  return Math.max(0, (curr - prev) / dt); // clamp absorbs counter resets
+}
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+// varz.nats is one entry per NATS cluster (cell); tolerate the legacy
+// single-object shape so the page also renders against older bridges.
+function natsCells(varz) {
+  if (Array.isArray(varz.nats)) return varz.nats;
+  if (varz.nats) return [Object.assign({name: "default"}, varz.nats)];
+  return [];
+}
+function natsTotals(cells) {
+  const t = {in_bytes: 0, out_bytes: 0, reconnects: 0};
+  for (const c of cells) {
+    t.in_bytes += c.in_bytes || 0;
+    t.out_bytes += c.out_bytes || 0;
+    t.reconnects += c.reconnects || 0;
+  }
+  return t;
+}
+
+// ---- stat tiles ----------------------------------------------------------
+
+function renderTiles(varz, rates) {
+  const tiles = document.getElementById("tiles");
+  tiles.replaceChildren();
+
+  const cells = natsCells(varz);
+  const totals = natsTotals(cells);
+
+  // one status tile per NATS cluster (cell)
+  for (const cell of cells) {
+    const status = el("div", "tile");
+    status.appendChild(el("div", "label", "NATS " + (cell.name || "default")));
+    const pill = el("div", "pill");
+    const dot = el("span", "dot");
+    dot.style.background = cell.connected ? "var(--status-good)" : "var(--status-crit)";
+    pill.appendChild(dot);
+    pill.appendChild(document.createTextNode(cell.connected ? "✓ connected" : "✕ down"));
+    status.appendChild(pill);
+    status.appendChild(el("div", "detail", cell.connected_url ? cell.connected_url : "no connection"));
+    tiles.appendChild(status);
+  }
+  if (cells.length === 0) {
+    const status = el("div", "tile");
+    status.appendChild(el("div", "label", "NATS connection"));
+    status.appendChild(el("div", "detail", "no clusters reported"));
+    tiles.appendChild(status);
+  }
+
+  function tile(label, value, detail) {
+    const t = el("div", "tile");
+    t.appendChild(el("div", "label", label));
+    t.appendChild(el("div", "value", value));
+    if (detail) t.appendChild(el("div", "detail", detail));
+    tiles.appendChild(t);
+  }
+  tile("Read from NATS", fmtBytes(rates.wireIn) + "/s",
+    "total " + fmtBytes(totals.in_bytes));
+  tile("Written to NATS", fmtBytes(rates.wireOut) + "/s",
+    "total " + fmtBytes(totals.out_bytes));
+  tile("Messages", fmtNum(rates.msgIn) + "/s in",
+    fmtNum(rates.msgOut) + "/s out · " + fmtNum(varz.request_count) + " total");
+  tile("NATS reconnects", fmtNum(totals.reconnects),
+    cells.length > 1 ? cells.map(c => (c.name || "default") + " " + fmtNum(c.reconnects || 0)).join(" · ") : undefined);
+  const connected = (varz.connectors || []).filter(c => c.connected).length;
+  tile("Connectors", connected + " / " + (varz.connectors || []).length, "connected / configured");
+
+  document.getElementById("uptime").textContent = "up " + fmtUptime(varz.uptime);
+}
+
+// ---- line chart ----------------------------------------------------------
+
+const SVGNS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+// Two-series line chart with area wash, hairline grid, crosshair + tooltip.
+function renderLineChart(wrapID, series, fmt) {
+  const wrap = document.getElementById(wrapID);
+  wrap.replaceChildren();
+  const W = 540, H = 190, padL = 52, padR = 12, padT = 8, padB = 20;
+  const svg = svgEl("svg", {viewBox: "0 0 " + W + " " + H, role: "img"});
+  const n = history.length;
+  if (n < 2) {
+    wrap.appendChild(el("div", "empty", "Waiting for samples…"));
+    return;
+  }
+  const vals = [];
+  for (const s of series) for (const p of s.points) vals.push(p);
+  let yMax = Math.max(1, ...vals) * 1.15;
+  const x = i => padL + (i / (n - 1)) * (W - padL - padR);
+  const y = v => padT + (1 - v / yMax) * (H - padT - padB);
+
+  // gridlines + y ticks
+  for (let g = 0; g <= 3; g++) {
+    const gv = yMax * g / 3;
+    const gy = y(gv);
+    svg.appendChild(svgEl("line", {x1: padL, x2: W - padR, y1: gy, y2: gy,
+      stroke: g === 0 ? "var(--baseline)" : "var(--grid)", "stroke-width": 1}));
+    const t = svgEl("text", {x: padL - 6, y: gy + 3.5, "text-anchor": "end",
+      "font-size": 10, fill: "var(--muted)"});
+    t.textContent = fmt(gv);
+    svg.appendChild(t);
+  }
+  // series: area wash then 2px line then end marker
+  for (const s of series) {
+    const pts = s.points.map((v, i) => x(i) + "," + y(v)).join(" ");
+    svg.appendChild(svgEl("polygon", {
+      points: x(0) + "," + y(0) + " " + pts + " " + x(n - 1) + "," + y(0),
+      fill: s.color, opacity: 0.1}));
+    svg.appendChild(svgEl("polyline", {points: pts, fill: "none", stroke: s.color,
+      "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"}));
+    const last = s.points[n - 1];
+    svg.appendChild(svgEl("circle", {cx: x(n - 1), cy: y(last), r: 4, fill: s.color,
+      stroke: "var(--surface)", "stroke-width": 2}));
+  }
+  // crosshair + tooltip
+  const cross = svgEl("line", {y1: padT, y2: H - padB, stroke: "var(--baseline)",
+    "stroke-width": 1, visibility: "hidden"});
+  svg.appendChild(cross);
+  const tip = el("div", "tooltip");
+  wrap.appendChild(svg);
+  wrap.appendChild(tip);
+
+  function showAt(clientX) {
+    const rect = svg.getBoundingClientRect();
+    const sx = (clientX - rect.left) * (W / rect.width);
+    let i = Math.round((sx - padL) / (W - padL - padR) * (n - 1));
+    i = Math.max(0, Math.min(n - 1, i));
+    cross.setAttribute("x1", x(i));
+    cross.setAttribute("x2", x(i));
+    cross.setAttribute("visibility", "visible");
+    tip.replaceChildren();
+    tip.appendChild(el("div", "t", new Date(history[i].t).toLocaleTimeString()));
+    for (const s of series) {
+      const row = el("div", "row");
+      const key = el("span", "stroke");
+      key.style.background = s.color;
+      row.appendChild(key);
+      row.appendChild(el("b", null, fmt(s.points[i])));
+      row.appendChild(el("span", null, s.name));
+      tip.appendChild(row);
+    }
+    tip.style.display = "block";
+    const wr = wrap.getBoundingClientRect();
+    let left = (x(i) / W) * wr.width + 12;
+    if (left + tip.offsetWidth > wr.width - 4) left = left - tip.offsetWidth - 24;
+    tip.style.left = Math.max(0, left) + "px";
+    tip.style.top = "10px";
+  }
+  svg.addEventListener("pointermove", e => showAt(e.clientX));
+  svg.addEventListener("pointerleave", () => {
+    cross.setAttribute("visibility", "hidden");
+    tip.style.display = "none";
+  });
+}
+
+// ---- sparkline -----------------------------------------------------------
+
+function sparkline(points) {
+  const W = 120, H = 24;
+  const svg = svgEl("svg", {viewBox: "0 0 " + W + " " + H, width: W, height: H});
+  if (points.length >= 2) {
+    const max = Math.max(1e-9, ...points);
+    const pts = points.map((v, i) =>
+      (i / (points.length - 1)) * (W - 6) + 3 + "," + (H - 3 - (v / max) * (H - 8))).join(" ");
+    svg.appendChild(svgEl("polyline", {points: pts, fill: "none",
+      stroke: "var(--seq-1)", "stroke-width": 1.5, "stroke-linejoin": "round"}));
+    const parts = pts.split(" ");
+    const lastPt = parts[parts.length - 1].split(",");
+    svg.appendChild(svgEl("circle", {cx: lastPt[0], cy: lastPt[1], r: 2.5,
+      fill: "var(--series-in)"}));
+  }
+  return svg;
+}
+
+// ---- connector table -----------------------------------------------------
+
+function renderTable(varz, dt) {
+  const host = document.getElementById("conn-table");
+  host.replaceChildren();
+  const conns = varz.connectors || [];
+  if (conns.length === 0) {
+    host.appendChild(el("div", "empty", "No connectors configured."));
+    return;
+  }
+  const table = el("table");
+  const thead = el("thead");
+  const hr = el("tr");
+  for (const h of ["Connector", "Cell", "Msgs/s in", "Msgs/s out", "Bytes/s", "Total in", "Total out",
+      "Failed", "Pending", "q50", "q95", "Trend"]) {
+    hr.appendChild(el("th", null, h));
+  }
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const tbody = el("tbody");
+
+  const prevConns = new Map();
+  if (prevSample) for (const c of prevSample.connectors || []) prevConns.set(c.name, c);
+
+  for (const c of conns) {
+    const p = prevConns.get(c.name);
+    const rIn = rate(c.msg_in, p && p.msg_in, dt);
+    const rOut = rate(c.msg_out, p && p.msg_out, dt);
+    const rBytes = rate(c.bytes_in, p && p.bytes_in, dt);
+
+    let hist = connHistory.get(c.name);
+    if (!hist) { hist = []; connHistory.set(c.name, hist); }
+    hist.push(rIn);
+    if (hist.length > MAX_SAMPLES) hist.shift();
+
+    const tr = el("tr");
+    const name = el("td", "name");
+    const dot = el("span", "conn-dot");
+    dot.style.background = c.connected ? "var(--status-good)" : "var(--status-crit)";
+    name.appendChild(dot);
+    name.appendChild(document.createTextNode(c.name));
+    name.title = c.name + (c.connected ? " (connected)" : " (disconnected)");
+    tr.appendChild(name);
+    tr.appendChild(el("td", null, c.nats_connection || "default"));
+    tr.appendChild(el("td", null, fmtNum(rIn)));
+    tr.appendChild(el("td", null, fmtNum(rOut)));
+    tr.appendChild(el("td", null, fmtBytes(rBytes) + "/s"));
+    tr.appendChild(el("td", null, fmtNum(c.msg_in) + " · " + fmtBytes(c.bytes_in)));
+    tr.appendChild(el("td", null, fmtNum(c.msg_out) + " · " + fmtBytes(c.bytes_out)));
+    const failed = Math.max(0, c.msg_in - c.msg_out);
+    const failedCell = el("td", null, fmtNum(failed));
+    if (failed > 0) { failedCell.style.color = "var(--status-crit)"; failedCell.style.fontWeight = "600"; }
+    tr.appendChild(failedCell);
+    tr.appendChild(el("td", null, fmtNum(c.num_pending)));
+    tr.appendChild(el("td", null, fmtMs(c.q50)));
+    tr.appendChild(el("td", null, fmtMs(c.q95)));
+    const spark = el("td");
+    spark.appendChild(sparkline(hist));
+    tr.appendChild(spark);
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  host.appendChild(table);
+}
+
+// ---- latency panel -------------------------------------------------------
+
+function renderLatency(varz) {
+  const host = document.getElementById("latency");
+  host.replaceChildren();
+  const conns = (varz.connectors || []).filter(c => c.count > 0);
+  if (conns.length === 0) {
+    host.appendChild(el("div", "empty", "No requests handled yet."));
+    return;
+  }
+  const maxNs = Math.max(...conns.map(c => c.q95)) * 1.1;
+  const W = 640, H = 26, padR = 60;
+  const colors = ["var(--seq-1)", "var(--seq-2)", "var(--seq-3)", "var(--seq-4)"];
+  for (const c of conns) {
+    const row = el("div", "lat-row");
+    const lbl = el("div", "lname", c.name);
+    lbl.title = c.name;
+    row.appendChild(lbl);
+    const svg = svgEl("svg", {viewBox: "0 0 " + W + " " + H});
+    svg.appendChild(svgEl("line", {x1: 0, x2: W - padR, y1: H / 2, y2: H / 2,
+      stroke: "var(--grid)", "stroke-width": 1}));
+    const qs = [c.q50, c.q75, c.q90, c.q95];
+    qs.forEach((q, i) => {
+      const cx = Math.max(5, (q / maxNs) * (W - padR));
+      const dot = svgEl("circle", {cx: cx, cy: H / 2, r: 5, fill: colors[i],
+        stroke: "var(--surface)", "stroke-width": 2});
+      const title = svgEl("title", {});
+      title.textContent = ["q50", "q75", "q90", "q95"][i] + ": " + fmtMs(q);
+      dot.appendChild(title);
+      svg.appendChild(dot);
+    });
+    const t = svgEl("text", {x: W - padR + 8, y: H / 2 + 4, "font-size": 11,
+      fill: "var(--ink-2)"});
+    t.textContent = fmtMs(c.q95);
+    svg.appendChild(t);
+    row.appendChild(svg);
+    host.appendChild(row);
+  }
+}
+
+// ---- polling loop --------------------------------------------------------
+
+async function poll() {
+  let varz;
+  try {
+    const resp = await fetch("/varz", {cache: "no-store"});
+    if (!resp.ok) throw new Error("varz returned " + resp.status);
+    varz = await resp.json();
+  } catch (err) {
+    document.body.classList.add("stale");
+    return;
+  }
+  document.body.classList.remove("stale");
+
+  const now = Date.now();
+  const dt = prevSample ? (now - prevSample.t) / 1000 : 0;
+
+  let msgIn = 0, msgOut = 0, pMsgIn = 0, pMsgOut = 0;
+  for (const c of varz.connectors || []) { msgIn += c.msg_in; msgOut += c.msg_out; }
+  if (prevSample) for (const c of prevSample.connectors || []) { pMsgIn += c.msg_in; pMsgOut += c.msg_out; }
+
+  const totals = natsTotals(natsCells(varz));
+  const rates = {
+    wireIn: rate(totals.in_bytes, prevSample && prevSample.wireInTotal, dt),
+    wireOut: rate(totals.out_bytes, prevSample && prevSample.wireOutTotal, dt),
+    msgIn: prevSample ? rate(msgIn, pMsgIn, dt) : 0,
+    msgOut: prevSample ? rate(msgOut, pMsgOut, dt) : 0,
+  };
+
+  if (prevSample) {
+    history.push({t: now, wireIn: rates.wireIn, wireOut: rates.wireOut,
+      msgIn: rates.msgIn, msgOut: rates.msgOut});
+    if (history.length > MAX_SAMPLES) history.shift();
+  }
+
+  renderTiles(varz, rates);
+  renderLineChart("chart-wire", [
+    {name: "read from NATS", color: "var(--series-in)", points: history.map(h => h.wireIn)},
+    {name: "written to NATS", color: "var(--series-out)", points: history.map(h => h.wireOut)},
+  ], v => fmtBytes(v) + "/s");
+  renderLineChart("chart-msgs", [
+    {name: "read from source", color: "var(--series-in)", points: history.map(h => h.msgIn)},
+    {name: "delivered", color: "var(--series-out)", points: history.map(h => h.msgOut)},
+  ], v => fmtNum(v) + "/s");
+  renderTable(varz, dt);
+  renderLatency(varz);
+
+  prevSample = {
+    t: now,
+    connectors: varz.connectors || [],
+    wireInTotal: totals.in_bytes,
+    wireOutTotal: totals.out_bytes,
+  };
+  document.getElementById("poll-info").textContent =
+    "refreshes every " + (POLL_MS / 1000) + "s";
+}
+
+poll();
+setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>

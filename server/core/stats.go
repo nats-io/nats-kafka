@@ -32,11 +32,19 @@ type BridgeStats struct {
 	HTTPRequests map[string]int64      `json:"http_requests"`
 }
 
-// NATSConnectionStats captures the connection state for one NATS cluster (cell)
+// NATSConnectionStats captures the connection state and wire-level
+// statistics for one NATS cluster (cell), as reported by the NATS client
+// library. STAN traffic flows over the default cluster's connection and
+// is included in its numbers.
 type NATSConnectionStats struct {
 	Name         string `json:"name"`
 	Connected    bool   `json:"connected"`
 	ConnectedURL string `json:"connected_url,omitempty"`
+	Reconnects   uint64 `json:"reconnects"`
+	InMsgs       uint64 `json:"in_msgs"`
+	OutMsgs      uint64 `json:"out_msgs"`
+	InBytes      uint64 `json:"in_bytes"`
+	OutBytes     uint64 `json:"out_bytes"`
 }
 
 // ConnectorStats captures the statistics for a single connector

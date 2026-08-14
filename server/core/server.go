@@ -348,6 +348,12 @@ func (server *NATSKafkaBridge) natsConnectionStats() []NATSConnectionStats {
 		s := NATSConnectionStats{Name: cell.displayName(), Connected: cell.isConnected()}
 		if cell.nc != nil {
 			s.ConnectedURL = cell.nc.ConnectedUrl()
+			ncStats := cell.nc.Stats()
+			s.Reconnects = ncStats.Reconnects
+			s.InMsgs = ncStats.InMsgs
+			s.OutMsgs = ncStats.OutMsgs
+			s.InBytes = ncStats.InBytes
+			s.OutBytes = ncStats.OutBytes
 		}
 		stats = append(stats, s)
 	}
