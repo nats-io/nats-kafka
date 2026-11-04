@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/nats-io/nats-kafka/server/conf"
@@ -34,6 +35,7 @@ func TestMetricsEndpoint(t *testing.T) {
 	connect := []conf.ConnectorConfig{
 		{
 			Type:    "NATSToKafka",
+			ID:      "metrics-test",
 			Subject: subject,
 			Topic:   topic,
 		},
@@ -60,7 +62,7 @@ func TestMetricsEndpoint(t *testing.T) {
 	require.Contains(t, metrics, `nats_kafka_bridge_nats_in_bytes_total{cluster="default"}`)
 	require.Contains(t, metrics, `nats_kafka_bridge_nats_out_bytes_total{cluster="default"}`)
 	require.Contains(t, metrics, `nats_kafka_bridge_http_requests_total{path="/metrics"}`)
-	require.Contains(t, metrics, `nats_kafka_bridge_connector_connected{connector="NATS:`+subject+` to Kafka:`+topic+`"} 1`)
+	require.Contains(t, metrics, `nats_kafka_bridge_connector_connected{connector="NATS:`+subject+` to Kafka:`+topic+`",id="metrics-test"} 1`)
 	require.Contains(t, metrics, "nats_kafka_bridge_connector_messages_in_total")
 	require.Contains(t, metrics, "nats_kafka_bridge_connector_request_duration_seconds")
 
@@ -81,8 +83,52 @@ func TestMetricsEndpoint(t *testing.T) {
 	require.NoError(t, err)
 	metrics = string(contents)
 
-	require.Contains(t, metrics, `nats_kafka_bridge_connector_messages_in_total{connector="NATS:`+subject+` to Kafka:`+topic+`"} 1`)
-	require.Contains(t, metrics, `nats_kafka_bridge_connector_messages_out_total{connector="NATS:`+subject+` to Kafka:`+topic+`"} 1`)
+	require.Contains(t, metrics, `nats_kafka_bridge_connector_messages_in_total{connector="NATS:`+subject+` to Kafka:`+topic+`",id="metrics-test"} 1`)
+	require.Contains(t, metrics, `nats_kafka_bridge_connector_messages_out_total{connector="NATS:`+subject+` to Kafka:`+topic+`",id="metrics-test"} 1`)
+}
+
+// TestMetricsDuplicateConnectorNames covers two connectors that bridge the
+// same subject to the same topic, for example to scale out a queue group.
+// They share a connector name, so the id label must keep their series
+// distinct or the registry rejects the scrape.
+func TestMetricsDuplicateConnectorNames(t *testing.T) {
+	subject := "test"
+	topic := nuid.Next()
+
+	connect := []conf.ConnectorConfig{
+		{
+			Type:      "NATSToKafka",
+			ID:        "scale-a",
+			Subject:   subject,
+			QueueName: "scale",
+			Topic:     topic,
+		},
+		{
+			Type:      "NATSToKafka",
+			Subject:   subject,
+			QueueName: "scale",
+			Topic:     topic,
+		},
+	}
+
+	tbs, err := StartTestEnvironment(connect)
+	require.NoError(t, err)
+	defer tbs.Close()
+
+	client := http.Client{}
+	response, err := client.Get(tbs.Bridge.GetMonitoringRootURL() + "metrics")
+	require.NoError(t, err)
+	defer response.Body.Close()
+	contents, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, response.StatusCode, string(contents))
+	metrics := string(contents)
+
+	name := "NATS:" + subject + " to Kafka:" + topic
+	require.Contains(t, metrics, `nats_kafka_bridge_connector_connected{connector="`+name+`",id="scale-a"} 1`)
+
+	// the second connector has a generated id, so match on the prefix
+	require.Equal(t, 2, strings.Count(metrics, `nats_kafka_bridge_connector_connected{connector="`+name+`",id=`))
 }
 
 func TestDashboardEndpoint(t *testing.T) {

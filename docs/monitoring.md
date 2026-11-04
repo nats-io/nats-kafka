@@ -77,16 +77,16 @@ Standard Go runtime and process metrics are included alongside the bridge metric
 | `nats_kafka_bridge_info` | gauge | `version` | Build information, value is always 1. |
 | `nats_kafka_bridge_start_time_seconds` | gauge | | Unix time the bridge started. |
 | `nats_kafka_bridge_http_requests_total` | counter | `path` | Requests served by the monitoring endpoints. |
-| `nats_kafka_bridge_connector_connected` | gauge | `connector` | Whether the connector is connected (1) or not (0). |
-| `nats_kafka_bridge_connector_connects_total` | counter | `connector` | Times the connector has connected. |
-| `nats_kafka_bridge_connector_disconnects_total` | counter | `connector` | Times the connector has disconnected. |
-| `nats_kafka_bridge_connector_messages_in_total` | counter | `connector` | Messages read from the connector's source. |
-| `nats_kafka_bridge_connector_messages_out_total` | counter | `connector` | Messages successfully written to the destination. |
-| `nats_kafka_bridge_connector_bytes_in_total` | counter | `connector` | Payload bytes read from the source. |
-| `nats_kafka_bridge_connector_bytes_out_total` | counter | `connector` | Payload bytes successfully written to the destination. |
-| `nats_kafka_bridge_connector_requests_total` | counter | `connector` | Messages fully processed by the connector. |
-| `nats_kafka_bridge_connector_request_duration_seconds` | summary | `connector` | End-to-end handling time, quantiles 0.5/0.75/0.9/0.95. |
-| `nats_kafka_bridge_connector_pending_messages` | gauge | `connector` | JetStream consumer backlog at the last delivered message. |
+| `nats_kafka_bridge_connector_connected` | gauge | `connector`, `id` | Whether the connector is connected (1) or not (0). |
+| `nats_kafka_bridge_connector_connects_total` | counter | `connector`, `id` | Times the connector has connected. |
+| `nats_kafka_bridge_connector_disconnects_total` | counter | `connector`, `id` | Times the connector has disconnected. |
+| `nats_kafka_bridge_connector_messages_in_total` | counter | `connector`, `id` | Messages read from the connector's source. |
+| `nats_kafka_bridge_connector_messages_out_total` | counter | `connector`, `id` | Messages successfully written to the destination. |
+| `nats_kafka_bridge_connector_bytes_in_total` | counter | `connector`, `id` | Payload bytes read from the source. |
+| `nats_kafka_bridge_connector_bytes_out_total` | counter | `connector`, `id` | Payload bytes successfully written to the destination. |
+| `nats_kafka_bridge_connector_requests_total` | counter | `connector`, `id` | Messages fully processed by the connector. |
+| `nats_kafka_bridge_connector_request_duration_seconds` | summary | `connector`, `id` | End-to-end handling time, quantiles 0.5/0.75/0.9/0.95. |
+| `nats_kafka_bridge_connector_pending_messages` | gauge | `connector`, `id` | JetStream consumer backlog at the last delivered message. |
 | `nats_kafka_bridge_nats_connected` | gauge | `cluster` | Whether the cluster's NATS connection is up (1) or not (0). |
 | `nats_kafka_bridge_nats_reconnects_total` | counter | `cluster` | Reconnects on the cluster's NATS connection. |
 | `nats_kafka_bridge_nats_in_msgs_total` | counter | `cluster` | Messages received over the cluster's NATS connection. |
@@ -99,6 +99,10 @@ Notes:
 * The `connector` label is the connector's `name` as reported by `/varz`, a description built from its type, subject and topic, for example `NATS:orders to Kafka:orders`.
 Connectors bound to a named NATS cluster carry the cluster prefix, for example `[cell-b] NATS:orders to Kafka:orders`.
 It is derived from the configuration, so it stays stable across restarts.
+It is not unique: two connectors that bridge the same subject to the same topic, for example to scale out a queue group, share it.
+* The `id` label is the connector's `id` from `/varz`, which keeps those series distinct.
+It is the configured `id` when set, otherwise one generated when the bridge process creates the connector.
+A generated id survives connector restarts but changes when the bridge process restarts, so set `id` in the configuration for series that persist across deployments.
 * The `cluster` label is the NATS cluster name from `/varz`, `default` for the `nats` config block and the configured name for each entry in `natsclusters`.
 STAN traffic flows over the default cluster's connection and is included in its numbers.
 * When a failing connector is restarted by the bridge its counters reset to zero. Prometheus `rate()` and `increase()` handle these resets natively.

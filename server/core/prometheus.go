@@ -26,6 +26,14 @@ import (
 
 const metricsNamespace = "nats_kafka_bridge"
 
+// connectorLabels identify a connector's series. The name alone is not
+// unique: two connectors bridging the same subject to the same topic, for
+// example to scale out a queue group, share it, and duplicate series make
+// the registry reject the whole scrape. The id is unique per connector,
+// either configured or generated once when the connector is created, and
+// survives reconnects because the bridge restarts the same connector.
+var connectorLabels = []string{"connector", "id"}
+
 // Per-connector metrics are labeled with the connector's configured name,
 // which is stable across restarts, unlike the generated nuid ID.
 var (
@@ -45,43 +53,43 @@ var (
 	descConnConnected = prometheus.NewDesc(
 		metricsNamespace+"_connector_connected",
 		"Whether the connector is currently connected (1) or not (0).",
-		[]string{"connector"}, nil)
+		connectorLabels, nil)
 	descConnConnects = prometheus.NewDesc(
 		metricsNamespace+"_connector_connects_total",
 		"Times the connector has connected.",
-		[]string{"connector"}, nil)
+		connectorLabels, nil)
 	descConnDisconnects = prometheus.NewDesc(
 		metricsNamespace+"_connector_disconnects_total",
 		"Times the connector has disconnected.",
-		[]string{"connector"}, nil)
+		connectorLabels, nil)
 	descConnMsgsIn = prometheus.NewDesc(
 		metricsNamespace+"_connector_messages_in_total",
 		"Messages read from the connector's source.",
-		[]string{"connector"}, nil)
+		connectorLabels, nil)
 	descConnMsgsOut = prometheus.NewDesc(
 		metricsNamespace+"_connector_messages_out_total",
 		"Messages successfully written to the connector's destination.",
-		[]string{"connector"}, nil)
+		connectorLabels, nil)
 	descConnBytesIn = prometheus.NewDesc(
 		metricsNamespace+"_connector_bytes_in_total",
 		"Payload bytes read from the connector's source.",
-		[]string{"connector"}, nil)
+		connectorLabels, nil)
 	descConnBytesOut = prometheus.NewDesc(
 		metricsNamespace+"_connector_bytes_out_total",
 		"Payload bytes successfully written to the connector's destination.",
-		[]string{"connector"}, nil)
+		connectorLabels, nil)
 	descConnRequests = prometheus.NewDesc(
 		metricsNamespace+"_connector_requests_total",
 		"Messages fully processed by the connector.",
-		[]string{"connector"}, nil)
+		connectorLabels, nil)
 	descConnDuration = prometheus.NewDesc(
 		metricsNamespace+"_connector_request_duration_seconds",
 		"End-to-end message handling time. Quantiles are computed over the connector's lifetime, not a sliding window.",
-		[]string{"connector"}, nil)
+		connectorLabels, nil)
 	descConnPending = prometheus.NewDesc(
 		metricsNamespace+"_connector_pending_messages",
 		"JetStream consumer backlog observed on the last delivered message, 0 for non-JetStream connectors.",
-		[]string{"connector"}, nil)
+		connectorLabels, nil)
 
 	descNATSConnected = prometheus.NewDesc(
 		metricsNamespace+"_nats_connected",
@@ -147,15 +155,15 @@ func (c *bridgeCollector) Collect(ch chan<- prometheus.Metric) {
 		if cs.Connected {
 			connected = 1.0
 		}
-		ch <- prometheus.MustNewConstMetric(descConnConnected, prometheus.GaugeValue, connected, cs.Name)
-		ch <- prometheus.MustNewConstMetric(descConnConnects, prometheus.CounterValue, float64(cs.Connects), cs.Name)
-		ch <- prometheus.MustNewConstMetric(descConnDisconnects, prometheus.CounterValue, float64(cs.Disconnects), cs.Name)
-		ch <- prometheus.MustNewConstMetric(descConnMsgsIn, prometheus.CounterValue, float64(cs.MessagesIn), cs.Name)
-		ch <- prometheus.MustNewConstMetric(descConnMsgsOut, prometheus.CounterValue, float64(cs.MessagesOut), cs.Name)
-		ch <- prometheus.MustNewConstMetric(descConnBytesIn, prometheus.CounterValue, float64(cs.BytesIn), cs.Name)
-		ch <- prometheus.MustNewConstMetric(descConnBytesOut, prometheus.CounterValue, float64(cs.BytesOut), cs.Name)
-		ch <- prometheus.MustNewConstMetric(descConnRequests, prometheus.CounterValue, float64(cs.RequestCount), cs.Name)
-		ch <- prometheus.MustNewConstMetric(descConnPending, prometheus.GaugeValue, float64(cs.NumPending), cs.Name)
+		ch <- prometheus.MustNewConstMetric(descConnConnected, prometheus.GaugeValue, connected, cs.Name, cs.ID)
+		ch <- prometheus.MustNewConstMetric(descConnConnects, prometheus.CounterValue, float64(cs.Connects), cs.Name, cs.ID)
+		ch <- prometheus.MustNewConstMetric(descConnDisconnects, prometheus.CounterValue, float64(cs.Disconnects), cs.Name, cs.ID)
+		ch <- prometheus.MustNewConstMetric(descConnMsgsIn, prometheus.CounterValue, float64(cs.MessagesIn), cs.Name, cs.ID)
+		ch <- prometheus.MustNewConstMetric(descConnMsgsOut, prometheus.CounterValue, float64(cs.MessagesOut), cs.Name, cs.ID)
+		ch <- prometheus.MustNewConstMetric(descConnBytesIn, prometheus.CounterValue, float64(cs.BytesIn), cs.Name, cs.ID)
+		ch <- prometheus.MustNewConstMetric(descConnBytesOut, prometheus.CounterValue, float64(cs.BytesOut), cs.Name, cs.ID)
+		ch <- prometheus.MustNewConstMetric(descConnRequests, prometheus.CounterValue, float64(cs.RequestCount), cs.Name, cs.ID)
+		ch <- prometheus.MustNewConstMetric(descConnPending, prometheus.GaugeValue, float64(cs.NumPending), cs.Name, cs.ID)
 
 		// Quantiles come back as -1 when the histogram is empty.
 		quantiles := map[float64]float64{}
@@ -167,7 +175,7 @@ func (c *bridgeCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 		sumSeconds := cs.MovingAverage * float64(cs.RequestCount) / float64(nanosPerSecond)
 		ch <- prometheus.MustNewConstSummary(descConnDuration,
-			uint64(cs.RequestCount), sumSeconds, quantiles, cs.Name)
+			uint64(cs.RequestCount), sumSeconds, quantiles, cs.Name, cs.ID)
 	}
 
 	for _, ns := range stats.NATS {
