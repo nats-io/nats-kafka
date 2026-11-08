@@ -146,6 +146,13 @@ type HTTPConfig struct {
 
 	ReadTimeout  int // milliseconds
 	WriteTimeout int // milliseconds
+
+	// DisableMetrics turns off the Prometheus /metrics endpoint,
+	// which is otherwise served whenever monitoring is enabled.
+	DisableMetrics bool
+	// DisableDashboard turns off the /dashboard page,
+	// which is otherwise served whenever monitoring is enabled.
+	DisableDashboard bool
 }
 
 // NATSConfig configuration for a NATS connection

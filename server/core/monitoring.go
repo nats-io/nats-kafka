@@ -28,9 +28,11 @@ import (
 
 // HTTP endpoints
 const (
-	RootPath    = "/"
-	VarzPath    = "/varz"
-	HealthzPath = "/healthz"
+	RootPath      = "/"
+	VarzPath      = "/varz"
+	HealthzPath   = "/healthz"
+	MetricsPath   = "/metrics"
+	DashboardPath = "/dashboard"
 )
 
 // startMonitoring starts the HTTP or HTTPs server if needed.
@@ -61,6 +63,12 @@ func (server *NATSKafkaBridge) startMonitoring() error {
 		RootPath:    0,
 		VarzPath:    0,
 		HealthzPath: 0,
+	}
+	if !config.DisableMetrics {
+		server.httpReqStats[MetricsPath] = 0
+	}
+	if !config.DisableDashboard {
+		server.httpReqStats[DashboardPath] = 0
 	}
 
 	var (
@@ -116,6 +124,12 @@ func (server *NATSKafkaBridge) startMonitoring() error {
 	mux.HandleFunc(RootPath, server.HandleRoot)
 	mux.HandleFunc(VarzPath, server.HandleVarz)
 	mux.HandleFunc(HealthzPath, server.HandleHealthz)
+	if !config.DisableMetrics {
+		mux.Handle(MetricsPath, newMetricsHandler(server))
+	}
+	if !config.DisableDashboard {
+		mux.HandleFunc(DashboardPath, server.HandleDashboard)
+	}
 
 	// Do not set a WriteTimeout because it could cause cURL/browser
 	// to return empty response or unable to display page if the
@@ -185,6 +199,8 @@ func (server *NATSKafkaBridge) HandleRoot(w http.ResponseWriter, r *http.Request
     <br/>
 		<a href=/varz>varz</a><br/>
 		<a href=/healthz>healthz</a><br/>
+		<a href=/metrics>metrics</a><br/>
+		<a href=/dashboard>dashboard</a><br/>
     <br/>
   </body>
 </html>`)
