@@ -17,16 +17,38 @@
 package core
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/nats-io/nats-kafka/server/conf"
 	nats "github.com/nats-io/nats.go"
 	stan "github.com/nats-io/stan.go"
 )
 
-func (server *NATSKafkaBridge) natsError(nc *nats.Conn, sub *nats.Subscription, err error) {
-	server.logger.Warnf("nats error %s", err.Error())
+// natsCell wraps the connection state for a single NATS cluster (cell).
+// The bridge holds one cell for the default nats block (config.Name "") and
+// one per entry in the natsclusters config list. The nc and js fields are
+// guarded by the bridge's natsLock.
+type natsCell struct {
+	config conf.NATSConfig
+	nc     *nats.Conn
+	js     nats.JetStreamContext
+}
+
+// displayName is the cell name used in logs and monitoring
+func (cell *natsCell) displayName() string {
+	if cell.config.Name == "" {
+		return "default"
+	}
+	return cell.config.Name
+}
+
+// isConnected reports whether the cell's NATS connection is established,
+// assumes the bridge's natsLock is held by the caller
+func (cell *natsCell) isConnected() bool {
+	return cell.nc != nil && cell.nc.ConnectedUrl() != ""
 }
 
 func (server *NATSKafkaBridge) stanConnectionLost(sc stan.Conn, err error) {
@@ -42,29 +64,40 @@ func (server *NATSKafkaBridge) stanConnectionLost(sc stan.Conn, err error) {
 	server.checkConnections()
 }
 
-func (server *NATSKafkaBridge) natsDisconnected(nc *nats.Conn) {
+func (server *NATSKafkaBridge) natsDisconnected(cell *natsCell) {
 	if !server.checkRunning() {
 		return
 	}
-	server.logger.Warnf("nats disconnected")
+	server.logger.Warnf("nats disconnected, cluster %s", cell.displayName())
 	server.checkConnections()
 }
 
-func (server *NATSKafkaBridge) natsReconnected(nc *nats.Conn) {
-	server.logger.Warnf("nats reconnected")
+func (server *NATSKafkaBridge) natsReconnected(cell *natsCell) {
+	server.logger.Warnf("nats reconnected, cluster %s", cell.displayName())
 }
 
-func (server *NATSKafkaBridge) natsClosed(nc *nats.Conn) {
-	if server.checkRunning() {
-		server.logger.Errorf("nats connection closed, shutting down bridge")
+func (server *NATSKafkaBridge) natsClosed(cell *natsCell) {
+	if !server.checkRunning() {
+		return
+	}
+
+	if cell.config.Name == "" {
+		server.logger.Errorf("nats connection closed for the default cluster, shutting down bridge")
 		go func() {
-			// When NATS connection is really marked as closed, the bridge cannot
-			// do anything else, so stop the bridge and exit the process with an
-			// error so that system/docker can restart (if applicable).
+			// When the default NATS connection is really marked as closed, the
+			// bridge cannot do anything else, so stop the bridge and exit the
+			// process with an error so that system/docker can restart (if applicable).
 			server.Stop()
 			os.Exit(2)
 		}()
+		return
 	}
+
+	// A named cell going away should not take down connectors on the other
+	// cells, queue its connectors for restart and let the reconnect timer
+	// re-dial the cluster.
+	server.logger.Errorf("nats connection closed for cluster %s, its connectors will restart when the cluster is reachable", cell.displayName())
+	server.checkConnections()
 }
 
 func (server *NATSKafkaBridge) natsDiscoveredServers(nc *nats.Conn) {
@@ -72,27 +105,37 @@ func (server *NATSKafkaBridge) natsDiscoveredServers(nc *nats.Conn) {
 	server.logger.Debugf("known servers: %v\n", nc.Servers())
 }
 
-// assumes the lock is held by the caller
-func (server *NATSKafkaBridge) connectToNATS() error {
-	server.natsLock.Lock()
-	defer server.natsLock.Unlock()
+// dialCell opens a NATS connection for the cell's config. It does not touch
+// the cell's shared fields, so it may run without the natsLock; the caller
+// stores the returned connection under the lock.
+func (server *NATSKafkaBridge) dialCell(cell *natsCell) (*nats.Conn, error) {
+	server.logger.Noticef("connecting to NATS core, cluster %s", cell.displayName())
 
-	if !server.running {
-		return nil // already stopped
+	config := cell.config
+
+	clientName := config.ClientName
+	if config.Name != "" {
+		clientName = fmt.Sprintf("%s [%s]", clientName, config.Name)
 	}
 
-	server.logger.Noticef("connecting to NATS core")
-
-	config := server.config.NATS
 	options := []nats.Option{
+		nats.Name(clientName),
 		nats.MaxReconnects(config.MaxReconnects),
 		nats.ReconnectWait(time.Duration(config.ReconnectWait) * time.Millisecond),
 		nats.Timeout(time.Duration(config.ConnectTimeout) * time.Millisecond),
-		nats.ErrorHandler(server.natsError),
+		nats.ErrorHandler(func(nc *nats.Conn, sub *nats.Subscription, err error) {
+			server.logger.Warnf("nats error on cluster %s, %s", cell.displayName(), err.Error())
+		}),
 		nats.DiscoveredServersHandler(server.natsDiscoveredServers),
-		nats.DisconnectHandler(server.natsDisconnected),
-		nats.ReconnectHandler(server.natsReconnected),
-		nats.ClosedHandler(server.natsClosed),
+		nats.DisconnectHandler(func(nc *nats.Conn) {
+			server.natsDisconnected(cell)
+		}),
+		nats.ReconnectHandler(func(nc *nats.Conn) {
+			server.natsReconnected(cell)
+		}),
+		nats.ClosedHandler(func(nc *nats.Conn) {
+			server.natsClosed(cell)
+		}),
 		nats.NoCallbacksAfterClientClose(),
 	}
 
@@ -111,20 +154,47 @@ func (server *NATSKafkaBridge) connectToNATS() error {
 	if config.UserNKEY != "" {
 		opt, err := nats.NkeyOptionFromSeed(config.UserNKEY)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		options = append(options, opt)
 	}
 
-	nc, err := nats.Connect(strings.Join(config.Servers, ","),
+	return nats.Connect(strings.Join(config.Servers, ","),
 		options...,
 	)
+}
 
-	if err != nil {
-		return err
+// connectToNATS builds the cell map from the config and connects every cell.
+// The default cluster must be reachable; a named cluster that is not gets a
+// warning and is left for the reconnect timer, so one unreachable cell does
+// not keep the whole bridge down.
+// Assumes the lock is held by the caller.
+func (server *NATSKafkaBridge) connectToNATS() error {
+	server.natsLock.Lock()
+	defer server.natsLock.Unlock()
+
+	if !server.running {
+		return nil // already stopped
 	}
 
-	server.nats = nc
+	server.cells = map[string]*natsCell{
+		"": {config: server.config.NATS},
+	}
+	for _, c := range server.config.NATSClusters {
+		server.cells[c.Name] = &natsCell{config: c}
+	}
+
+	for _, cell := range server.cells {
+		nc, err := server.dialCell(cell)
+		if err != nil {
+			if cell.config.Name == "" {
+				return err
+			}
+			server.logger.Warnf("error connecting to NATS cluster %s, its connectors will start when the cluster is reachable, %s", cell.displayName(), err.Error())
+			continue
+		}
+		cell.nc = nc
+	}
 	return nil
 }
 
@@ -142,6 +212,11 @@ func (server *NATSKafkaBridge) connectToSTAN() error {
 		return nil
 	}
 
+	cell := server.cells[""]
+	if cell == nil || cell.nc == nil {
+		return fmt.Errorf("default NATS connection is not available for NATS streaming")
+	}
+
 	server.logger.Noticef("connecting to NATS streaming")
 	config := server.config.STAN
 	if config.DiscoverPrefix == "" {
@@ -149,7 +224,7 @@ func (server *NATSKafkaBridge) connectToSTAN() error {
 	}
 
 	sc, err := stan.Connect(config.ClusterID, config.ClientID,
-		stan.NatsConn(server.nats),
+		stan.NatsConn(cell.nc),
 		stan.PubAckWait(time.Duration(config.PubAckWait)*time.Millisecond),
 		stan.MaxPubAcksInflight(config.MaxPubAcksInflight),
 		stan.ConnectWait(time.Duration(config.ConnectWait)*time.Millisecond),
@@ -166,27 +241,21 @@ func (server *NATSKafkaBridge) connectToSTAN() error {
 	return nil
 }
 
-func (server *NATSKafkaBridge) connectToJetStream() error {
-	server.natsLock.Lock()
-	defer server.natsLock.Unlock()
-
-	if server.js != nil {
-		return nil // already connected
-	}
-
-	var hasJetStream bool
+// cellHasJetStream reports whether any configured connector needs JetStream
+// on the named cell
+func (server *NATSKafkaBridge) cellHasJetStream(name string) bool {
 	for _, c := range server.config.Connect {
-		if strings.Contains(c.Type, "JetStream") {
-			hasJetStream = true
-			break
+		if c.NATSConnection == name && strings.Contains(c.Type, "JetStream") {
+			return true
 		}
 	}
-	if !hasJetStream {
-		server.logger.Noticef("skipping JetStream connection, not configured")
-		return nil
-	}
+	return false
+}
 
-	server.logger.Noticef("connecting to JetStream")
+// connectCellJetStream derives the JetStream context from the cell's
+// current connection. Assumes the natsLock is held by the caller.
+func (server *NATSKafkaBridge) connectCellJetStream(cell *natsCell) error {
+	server.logger.Noticef("connecting to JetStream, cluster %s", cell.displayName())
 
 	var opts []nats.JSOpt
 	c := server.config.JetStream
@@ -197,11 +266,82 @@ func (server *NATSKafkaBridge) connectToJetStream() error {
 		opts = append(opts, nats.PublishAsyncMaxPending(c.PublishAsyncMaxPending))
 	}
 
-	js, err := server.nats.JetStream(opts...)
+	js, err := cell.nc.JetStream(opts...)
 	if err != nil {
 		return err
 	}
-	server.js = js
+	cell.js = js
+	return nil
+}
 
+func (server *NATSKafkaBridge) connectToJetStream() error {
+	server.natsLock.Lock()
+	defer server.natsLock.Unlock()
+
+	needed := false
+	for _, cell := range server.cells {
+		if !server.cellHasJetStream(cell.config.Name) {
+			continue
+		}
+		needed = true
+		if cell.js != nil || cell.nc == nil {
+			// a cell that was unreachable at startup gets its JetStream
+			// context from redialCell once the cluster is reachable
+			continue
+		}
+		if err := server.connectCellJetStream(cell); err != nil {
+			return err
+		}
+	}
+
+	if !needed {
+		server.logger.Noticef("skipping JetStream connection, not configured")
+	}
+	return nil
+}
+
+// redialCell re-establishes the connection for a cell whose NATS client is
+// missing or reached the Closed state. A closed client never reconnects on
+// its own, so the reconnect timer uses this before restarting the cell's
+// connectors. A no-op when the client is alive and handling its own
+// reconnects and the JetStream context (when needed) is in place.
+func (server *NATSKafkaBridge) redialCell(name string) error {
+	server.natsLock.Lock()
+	cell, ok := server.cells[name]
+	if !ok {
+		server.natsLock.Unlock()
+		return fmt.Errorf("unknown nats cluster %q", name)
+	}
+	needDial := cell.nc == nil || cell.nc.IsClosed()
+	if needDial {
+		// make sure nobody publishes through the old context while we dial
+		cell.js = nil
+	}
+	server.natsLock.Unlock()
+
+	if needDial {
+		// dial outside the natsLock so a slow dial of a dead cluster cannot
+		// stall message flow on the healthy cells
+		nc, err := server.dialCell(cell)
+		if err != nil {
+			return err
+		}
+
+		server.natsLock.Lock()
+		if cell.nc != nil && !cell.nc.IsClosed() {
+			// someone else re-established the connection while we dialed
+			server.natsLock.Unlock()
+			nc.Close()
+			return nil
+		}
+		cell.nc = nc
+		server.natsLock.Unlock()
+	}
+
+	server.natsLock.Lock()
+	defer server.natsLock.Unlock()
+	if cell.js == nil && server.cellHasJetStream(cell.config.Name) {
+		return server.connectCellJetStream(cell)
+	}
 	return nil
 }

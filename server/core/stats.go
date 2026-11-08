@@ -23,20 +23,38 @@ import (
 
 // BridgeStats wraps the current status of the bridge and all of its connectors
 type BridgeStats struct {
-	StartTime    int64            `json:"start_time"`
-	ServerTime   int64            `json:"current_time"`
-	UpTime       string           `json:"uptime"`
-	RequestCount int64            `json:"request_count"`
-	Connections  []ConnectorStats `json:"connectors"`
-	HTTPRequests map[string]int64 `json:"http_requests"`
+	StartTime    int64                 `json:"start_time"`
+	ServerTime   int64                 `json:"current_time"`
+	UpTime       string                `json:"uptime"`
+	RequestCount int64                 `json:"request_count"`
+	NATS         []NATSConnectionStats `json:"nats"`
+	Connections  []ConnectorStats      `json:"connectors"`
+	HTTPRequests map[string]int64      `json:"http_requests"`
+}
+
+// NATSConnectionStats captures the connection state and wire-level
+// statistics for one NATS cluster (cell), as reported by the NATS client
+// library. STAN traffic flows over the default cluster's connection and
+// is included in its numbers.
+type NATSConnectionStats struct {
+	Name         string `json:"name"`
+	Connected    bool   `json:"connected"`
+	ConnectedURL string `json:"connected_url,omitempty"`
+	Reconnects   uint64 `json:"reconnects"`
+	InMsgs       uint64 `json:"in_msgs"`
+	OutMsgs      uint64 `json:"out_msgs"`
+	InBytes      uint64 `json:"in_bytes"`
+	OutBytes     uint64 `json:"out_bytes"`
 }
 
 // ConnectorStats captures the statistics for a single connector
 // times are in nanoseconds, use a holder to get the protection
 // of a lock and to fill in the quantiles
 type ConnectorStats struct {
-	Name          string  `json:"name"`
-	ID            string  `json:"id"`
+	Name           string `json:"name"`
+	ID             string `json:"id"`
+	NATSConnection string `json:"nats_connection,omitempty"`
+
 	Connected     bool    `json:"connected"`
 	Connects      int64   `json:"connects"`
 	Disconnects   int64   `json:"disconnects"`
@@ -50,6 +68,7 @@ type ConnectorStats struct {
 	Quintile75    float64 `json:"q75"`
 	Quintile90    float64 `json:"q90"`
 	Quintile95    float64 `json:"q95"`
+	NumPending    uint64  `json:"num_pending"`
 }
 
 // ConnectorStatsHolder provides a lock and histogram
@@ -75,6 +94,14 @@ func NewConnectorStatsHolder(name string, id string) *ConnectorStatsHolder {
 // Name returns the name the holder was created with
 func (stats *ConnectorStatsHolder) Name() string {
 	return stats.stats.Name
+}
+
+// SetNATSConnection records the NATS cluster the connector is bound to
+// locks/unlocks the stats
+func (stats *ConnectorStatsHolder) SetNATSConnection(cluster string) {
+	stats.Lock()
+	stats.stats.NATSConnection = cluster
+	stats.Unlock()
 }
 
 // ID returns the ID the holder was created with
@@ -142,6 +169,21 @@ func (stats *ConnectorStatsHolder) AddRequest(bytesIn int64, bytesOut int64, req
 	stats.stats.RequestCount++
 	stats.stats.MovingAverage = ((float64(stats.stats.RequestCount-1) * stats.stats.MovingAverage) + reqns) / float64(stats.stats.RequestCount)
 	stats.histogram.Add(reqns)
+	stats.Unlock()
+}
+
+// AddStreamRequest groups addMessageIn, addMessageOut, addRequest time and num pending into a single call to reduce locking requirements.
+func (stats *ConnectorStatsHolder) AddStreamRequest(bytesIn int64, bytesOut int64, reqTime time.Duration, numPending uint64) {
+	stats.Lock()
+	stats.stats.MessagesIn++
+	stats.stats.BytesIn += bytesIn
+	stats.stats.MessagesOut++
+	stats.stats.BytesOut += bytesOut
+	reqns := float64(reqTime.Nanoseconds())
+	stats.stats.RequestCount++
+	stats.stats.MovingAverage = ((float64(stats.stats.RequestCount-1) * stats.stats.MovingAverage) + reqns) / float64(stats.stats.RequestCount)
+	stats.histogram.Add(reqns)
+	stats.stats.NumPending = numPending
 	stats.Unlock()
 }
 

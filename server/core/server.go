@@ -22,6 +22,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -45,15 +46,15 @@ type NATSKafkaBridge struct {
 	config conf.NATSKafkaBridgeConfig
 
 	natsLock sync.Mutex
-	nats     *nats.Conn
+	cells    map[string]*natsCell // keyed by cluster name, "" is the default nats block
 	stan     stan.Conn
-	js       nats.JetStreamContext
 
 	connectors []Connector
 
-	reconnectLock  sync.Mutex
-	reconnect      map[string]Connector
-	reconnectTimer *reconnectTimer
+	reconnectLock    sync.Mutex
+	reconnect        map[string]Connector
+	reconnectTimer   *reconnectTimer
+	reconnectStopped bool // set by stopReconnectTimer so a parked timer goroutine cannot act after Stop
 
 	statsLock     sync.Mutex
 	httpReqStats  map[string]int64
@@ -152,10 +153,18 @@ func (server *NATSKafkaBridge) Start() error {
 	server.startTime = time.Now()
 	server.logger = logging.NewNATSLogger(server.config.Logging)
 	server.connectors = []Connector{}
+
+	server.reconnectLock.Lock()
 	server.reconnect = map[string]Connector{}
+	server.reconnectStopped = false
+	server.reconnectLock.Unlock()
 
 	server.logger.Noticef("starting NATS-Kafka Bridge, version %s", Version)
 	server.logger.Noticef("server time is %s", server.startTime.Format(time.UnixDate))
+
+	if err := server.config.ValidateNATSClusters(); err != nil {
+		return err
+	}
 
 	if err := server.connectToNATS(); err != nil {
 		return err
@@ -213,11 +222,23 @@ func (server *NATSKafkaBridge) Stop() {
 		server.logger.Noticef("disconnected from NATS streaming")
 	}
 
-	if server.nats != nil {
-		if err := server.nats.Drain(); err != nil {
-			server.logger.Noticef("error draining NATS connection %s", err.Error())
+	// snapshot the cells under the natsLock; the reconnect timer is stopped
+	// above so no new connections appear after this point
+	server.natsLock.Lock()
+	cells := make([]*natsCell, 0, len(server.cells))
+	for _, cell := range server.cells {
+		cells = append(cells, cell)
+	}
+	server.natsLock.Unlock()
+
+	for _, cell := range cells {
+		if cell.nc == nil {
+			continue
 		}
-		server.logger.Noticef("disconnected from NATS")
+		if err := cell.nc.Drain(); err != nil {
+			server.logger.Noticef("error draining NATS connection for cluster %s, %s", cell.displayName(), err.Error())
+		}
+		server.logger.Noticef("disconnected from NATS, cluster %s", cell.displayName())
 	}
 
 	err := server.StopMonitoring()
@@ -246,6 +267,20 @@ func (server *NATSKafkaBridge) initializeConnectors() error {
 func (server *NATSKafkaBridge) startConnectors() error {
 	for _, c := range server.connectors {
 		if err := c.Start(); err != nil {
+			cluster := c.NATSConnection()
+			if cluster != "" {
+				// a failing connector on a named cluster only delays itself,
+				// whether the cluster is unreachable or reachable but
+				// misconfigured (e.g. a missing stream or denied permission);
+				// the reconnect timer keeps retrying it so the other
+				// clusters' connectors keep running
+				server.logger.Errorf("error starting %s, will retry, %s", c.String(), err.Error())
+				server.reconnectLock.Lock()
+				server.reconnect[c.ID()] = c
+				server.ensureReconnectTimer()
+				server.reconnectLock.Unlock()
+				continue
+			}
 			server.logger.Noticef("error starting %s, %s", c.String(), err.Error())
 			return err
 		}
@@ -260,34 +295,84 @@ func (server *NATSKafkaBridge) FatalError(format string, args ...interface{}) {
 	os.Exit(-1)
 }
 
-// NATS hosts a shared nats connection for the connectors
+// NATS returns the shared nats connection for the default cluster
 func (server *NATSKafkaBridge) NATS() *nats.Conn {
-	server.natsLock.Lock()
-	defer server.natsLock.Unlock()
-	return server.nats
+	return server.NATSFor("")
 }
 
-// Stan hosts a shared streaming connection for the connectors
+// NATSFor returns the shared nats connection for the named cluster,
+// nil if the cluster is unknown or not connected yet
+func (server *NATSKafkaBridge) NATSFor(cluster string) *nats.Conn {
+	server.natsLock.Lock()
+	defer server.natsLock.Unlock()
+
+	if cell, ok := server.cells[cluster]; ok {
+		return cell.nc
+	}
+	return nil
+}
+
+// Stan hosts a shared streaming connection for the connectors,
+// always bound to the default cluster
 func (server *NATSKafkaBridge) Stan() stan.Conn {
 	server.natsLock.Lock()
 	defer server.natsLock.Unlock()
 	return server.stan
 }
 
-// JetStream hosts a shared JetStream connection for the connectors
+// JetStream returns the shared JetStream context for the default cluster
 func (server *NATSKafkaBridge) JetStream() nats.JetStreamContext {
-	server.natsLock.Lock()
-	defer server.natsLock.Unlock()
-	return server.js
+	return server.JetStreamFor("")
 }
 
-// CheckNATS returns true if the bridge is connected to nats
-func (server *NATSKafkaBridge) CheckNATS() bool {
+// JetStreamFor returns the shared JetStream context for the named cluster,
+// nil if the cluster is unknown or JetStream is not enabled on it
+func (server *NATSKafkaBridge) JetStreamFor(cluster string) nats.JetStreamContext {
 	server.natsLock.Lock()
 	defer server.natsLock.Unlock()
 
-	if server.nats != nil {
-		return server.nats.ConnectedUrl() != ""
+	if cell, ok := server.cells[cluster]; ok {
+		return cell.js
+	}
+	return nil
+}
+
+// natsConnectionStats reports the connection state of every NATS cluster,
+// sorted by name for stable /varz output
+func (server *NATSKafkaBridge) natsConnectionStats() []NATSConnectionStats {
+	server.natsLock.Lock()
+	defer server.natsLock.Unlock()
+
+	stats := make([]NATSConnectionStats, 0, len(server.cells))
+	for _, cell := range server.cells {
+		s := NATSConnectionStats{Name: cell.displayName(), Connected: cell.isConnected()}
+		if cell.nc != nil {
+			s.ConnectedURL = cell.nc.ConnectedUrl()
+			ncStats := cell.nc.Stats()
+			s.Reconnects = ncStats.Reconnects
+			s.InMsgs = ncStats.InMsgs
+			s.OutMsgs = ncStats.OutMsgs
+			s.InBytes = ncStats.InBytes
+			s.OutBytes = ncStats.OutBytes
+		}
+		stats = append(stats, s)
+	}
+	sort.Slice(stats, func(i, j int) bool { return stats[i].Name < stats[j].Name })
+	return stats
+}
+
+// CheckNATS returns true if the bridge is connected to the default cluster
+func (server *NATSKafkaBridge) CheckNATS() bool {
+	return server.CheckNATSFor("")
+}
+
+// CheckNATSFor returns true if the bridge is connected to the named cluster
+func (server *NATSKafkaBridge) CheckNATSFor(cluster string) bool {
+	server.natsLock.Lock()
+	defer server.natsLock.Unlock()
+
+	if cell, ok := server.cells[cluster]; ok {
+		return cell.isConnected()
 	}
 
 	return false
@@ -298,30 +383,31 @@ func (server *NATSKafkaBridge) CheckStan() bool {
 	server.natsLock.Lock()
 	defer server.natsLock.Unlock()
 
-	if server.nats != nil {
-		ok := server.nats.ConnectedUrl() != ""
-
-		if !ok {
-			return false
-		}
+	if cell, ok := server.cells[""]; ok && cell.nc != nil && !cell.isConnected() {
+		return false
 	}
 
 	return server.stan != nil
 }
 
 // CheckJetStream returns true if the bridge is connected to JetStream
+// on the default cluster
 func (server *NATSKafkaBridge) CheckJetStream() bool {
+	return server.CheckJetStreamFor("")
+}
+
+// CheckJetStreamFor returns true if the bridge is connected to JetStream
+// on the named cluster
+func (server *NATSKafkaBridge) CheckJetStreamFor(cluster string) bool {
 	server.natsLock.Lock()
 	defer server.natsLock.Unlock()
 
-	if server.nats == nil {
-		return false
-	}
-	if server.nats.ConnectedUrl() == "" {
+	cell, ok := server.cells[cluster]
+	if !ok || !cell.isConnected() {
 		return false
 	}
 
-	return server.js != nil
+	return cell.js != nil
 }
 
 // ConnectorError is called by a connector if it has a failure that requires a reconnect
@@ -395,7 +481,7 @@ func (server *NATSKafkaBridge) checkConnections() {
 // requires the reconnect lock be held by the caller
 // spawns a go routine that will acquire the lock for handling reconnect tasks
 func (server *NATSKafkaBridge) ensureReconnectTimer() {
-	if server.reconnectTimer != nil {
+	if server.reconnectTimer != nil || server.reconnectStopped {
 		return
 	}
 
@@ -414,31 +500,53 @@ func (server *NATSKafkaBridge) ensureReconnectTimer() {
 		server.reconnectLock.Lock()
 		defer server.reconnectLock.Unlock()
 
-		// Wait for nats to be reconnected
-		if !server.CheckNATS() {
-			server.logger.Noticef("nats connection is down, will try reconnecting to NATS and restarting connectors in %d milliseconds", interval)
+		if server.reconnectStopped {
 			server.reconnectTimer = nil
-			server.ensureReconnectTimer()
-			// Until we get a NATS connection, no point in continuing.
 			return
 		}
 
-		// Make sure stan is up, if it should be
-		if server.stan == nil {
-			server.logger.Noticef("trying to reconnect to nats streaming")
+		// Make sure stan is up, if it should be. A down STAN connection only
+		// blocks STAN connectors, not the rest of the reconnect queue. Don't
+		// try before the default NATS connection is back, stan.Connect over a
+		// dead connection blocks the natsLock for its full ConnectWait.
+		if server.Stan() == nil && server.CheckNATS() {
 			err := server.connectToSTAN() // this may be a no-op if server.stan == nil was true but is not true once we get the lock in the connect
 
 			if err != nil {
 				server.logger.Noticef("error restarting streaming connection, will retry in %d milliseconds: %v", interval, err.Error())
-				server.reconnectTimer = nil
-				server.ensureReconnectTimer()
-				// Until we get a STAN connection, no point in continuing.
-				return
 			}
 		}
 
-		// Do all the reconnects
+		// A closed NATS client never recovers on its own, so re-dial each
+		// distinct cluster in the queue once per pass.
+		redialed := map[string]error{}
+		for _, connector := range server.reconnect {
+			cluster := connector.NATSConnection()
+			if _, ok := redialed[cluster]; !ok {
+				redialed[cluster] = server.redialCell(cluster)
+			}
+		}
+
+		// Do all the reconnects, gating each connector on the health of its
+		// own NATS cluster so an unreachable cell cannot stall the others.
 		for id, connector := range server.reconnect {
+			cluster := connector.NATSConnection()
+
+			if err := redialed[cluster]; err != nil {
+				server.logger.Noticef("error reconnecting to NATS cluster for connector %s, will retry in %d milliseconds, %s", connector.String(), interval, err.Error())
+				continue
+			}
+
+			if !server.CheckNATSFor(cluster) {
+				server.logger.Noticef("nats connection for connector %s is down, will retry in %d milliseconds", connector.String(), interval)
+				continue
+			}
+
+			if requiresStan(connector) && !server.CheckStan() {
+				server.logger.Noticef("nats streaming connection for connector %s is down, will retry in %d milliseconds", connector.String(), interval)
+				continue
+			}
+
 			server.logger.Noticef("trying to restart connector %s", connector.String())
 			err := connector.Start()
 
@@ -452,7 +560,10 @@ func (server *NATSKafkaBridge) ensureReconnectTimer() {
 
 		server.reconnectTimer = nil
 
-		if len(server.reconnect) > 0 {
+		// keep the timer alive while connectors are queued or a configured
+		// STAN connection still needs to be re-established
+		stanNeeded := server.config.STAN.ClusterID != "" && server.Stan() == nil
+		if len(server.reconnect) > 0 || stanNeeded {
 			server.ensureReconnectTimer()
 		}
 	}()
@@ -468,6 +579,7 @@ func (server *NATSKafkaBridge) stopReconnectTimer() {
 	}
 
 	server.reconnectTimer = nil
+	server.reconnectStopped = true
 }
 
 /*

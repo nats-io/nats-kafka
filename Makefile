@@ -57,6 +57,16 @@ setup-docker-test:
 teardown-docker-test:
 	docker compose -p nats_kafka_test -f resources/test_servers.yml down
 
+# Local two-cell validation environment: Kafka, Zookeeper, and two
+# JetStream-enabled NATS servers. See HOWTO.md.
+.PHONY: setup-local-multicell
+setup-local-multicell:
+	docker compose -p nats_kafka_multicell -f resources/local_multicell.yml up -d
+
+.PHONY: teardown-local-multicell
+teardown-local-multicell:
+	docker compose -p nats_kafka_multicell -f resources/local_multicell.yml down
+
 .PHONY: run-test
 run-test:
 	# Running with -short to avoid flaky tests.

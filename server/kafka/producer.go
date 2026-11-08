@@ -162,6 +162,10 @@ func (p *saramaProducer) NetInfo() string {
 	return fmt.Sprintf("%s, %s", saslInfo, tlsInfo)
 }
 
+// subjectHeaderKey is the Kafka header (populated for JetStream sources) that
+// carries the concrete NATS subject of the delivered message.
+const subjectHeaderKey = "subject"
+
 // Write sends an outgoing message.
 func (p *saramaProducer) Write(m Message) error {
 	var valueEncoder sarama.Encoder
@@ -174,13 +178,47 @@ func (p *saramaProducer) Write(m Message) error {
 	} else {
 		valueEncoder = sarama.StringEncoder(m.Value)
 	}
+
+	key := refineKeyWithSubjectHeader(m.Key, m.Headers)
+
 	_, _, err := p.sp.SendMessage(&sarama.ProducerMessage{
 		Topic:   p.topic,
 		Value:   valueEncoder,
-		Key:     sarama.StringEncoder(m.Key),
+		Key:     sarama.StringEncoder(key),
 		Headers: m.Headers,
 	})
 	return err
+}
+
+// refineKeyWithSubjectHeader refines a wildcard-terminated key such as
+// "STATE.GLOBAL_V2C.19.CELL2.>" into "STATE.GLOBAL_V2C.19.CELL2.01-244530648.>"
+// by taking the first 5 dot-separated tokens of the message's "subject" header
+// (through the car_id level) and re-appending the ">" wildcard.
+//
+// The original key is returned unchanged when the key does not end in ">",
+// there is no "subject" header, or the subject has fewer than 5 tokens.
+func refineKeyWithSubjectHeader(key []byte, headers []sarama.RecordHeader) []byte {
+	if len(key) == 0 || key[len(key)-1] != '>' {
+		return key
+	}
+
+	subject, found := "", false
+	for _, h := range headers {
+		if string(h.Key) == subjectHeaderKey {
+			subject, found = string(h.Value), true
+			break
+		}
+	}
+	if !found {
+		return key
+	}
+
+	subjTokens := strings.Split(subject, ".")
+	if len(subjTokens) < 5 {
+		return key // subject is not specific enough to build the key
+	}
+
+	return []byte(strings.Join(subjTokens[:5], ".") + ".>")
 }
 
 // Close closes the underlying Kafka connection. It blocks until all messages

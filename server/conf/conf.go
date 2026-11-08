@@ -70,12 +70,13 @@ type NATSKafkaBridgeConfig struct {
 	ReconnectInterval int // milliseconds
 	ConnectTimeout    int // milliseconds, connect timeout for Kafka connections
 
-	Logging    logging.Config
-	NATS       NATSConfig
-	STAN       NATSStreamingConfig
-	JetStream  JetStreamConfig
-	Monitoring HTTPConfig
-	Connect    []ConnectorConfig
+	Logging      logging.Config
+	NATS         NATSConfig   // the default NATS cluster (cell), shared by connectors that don't name one
+	NATSClusters []NATSConfig // optional additional named NATS clusters (cells)
+	STAN         NATSStreamingConfig
+	JetStream    JetStreamConfig
+	Monitoring   HTTPConfig
+	Connect      []ConnectorConfig
 }
 
 // TLSConf holds the configuration for a TLS connection/server
@@ -145,14 +146,22 @@ type HTTPConfig struct {
 
 	ReadTimeout  int // milliseconds
 	WriteTimeout int // milliseconds
+
+	// DisableMetrics turns off the Prometheus /metrics endpoint,
+	// which is otherwise served whenever monitoring is enabled.
+	DisableMetrics bool
+	// DisableDashboard turns off the /dashboard page,
+	// which is otherwise served whenever monitoring is enabled.
+	DisableDashboard bool
 }
 
 // NATSConfig configuration for a NATS connection
 type NATSConfig struct {
-	Servers []string
-
-	ConnectTimeout int // milliseconds
-	ReconnectWait  int // milliseconds
+	Name           string // cluster (cell) name, required for entries in natsclusters, must be empty on the default nats block
+	Servers        []string
+	ClientName     string // optional client name
+	ConnectTimeout int    // milliseconds
+	ReconnectWait  int    // milliseconds
 	MaxReconnects  int
 
 	TLS             TLSConf
@@ -197,6 +206,7 @@ func DefaultBridgeConfig() NATSKafkaBridgeConfig {
 			WriteTimeout: 5000,
 		},
 		NATS: NATSConfig{
+			ClientName:     "NATS Kafka Bridge",
 			ConnectTimeout: 5000,
 			ReconnectWait:  1000,
 			MaxReconnects:  0,
@@ -204,10 +214,71 @@ func DefaultBridgeConfig() NATSKafkaBridgeConfig {
 	}
 }
 
+// ValidateNATSClusters fills defaults on the named NATS cluster entries and
+// checks the cluster/connector wiring. Entries in NATSClusters come from the
+// reflection-based parser zero-valued, so the defaults applied to the default
+// nats block in DefaultBridgeConfig are applied here for each entry.
+func (bridge *NATSKafkaBridgeConfig) ValidateNATSClusters() error {
+	if bridge.NATS.Name != "" {
+		return fmt.Errorf("the default nats block must not set a name, found %q", bridge.NATS.Name)
+	}
+
+	names := map[string]bool{}
+	for i := range bridge.NATSClusters {
+		cluster := &bridge.NATSClusters[i]
+
+		if cluster.Name == "" {
+			return fmt.Errorf("natsclusters entry %d is missing a name", i)
+		}
+		if cluster.Name == "default" {
+			return fmt.Errorf("natsclusters name %q is reserved for the default nats block", cluster.Name)
+		}
+		if names[cluster.Name] {
+			return fmt.Errorf("duplicate natsclusters name %q", cluster.Name)
+		}
+		names[cluster.Name] = true
+
+		if len(cluster.Servers) == 0 {
+			return fmt.Errorf("natsclusters entry %q has no servers", cluster.Name)
+		}
+
+		if cluster.ClientName == "" {
+			cluster.ClientName = bridge.NATS.ClientName
+		}
+		if cluster.ConnectTimeout == 0 {
+			cluster.ConnectTimeout = bridge.NATS.ConnectTimeout
+		}
+		if cluster.ReconnectWait == 0 {
+			cluster.ReconnectWait = bridge.NATS.ReconnectWait
+		}
+		if cluster.MaxReconnects == 0 {
+			cluster.MaxReconnects = bridge.NATS.MaxReconnects
+		}
+	}
+
+	for _, c := range bridge.Connect {
+		if c.NATSConnection == "" {
+			continue
+		}
+		if !names[c.NATSConnection] {
+			return fmt.Errorf("connector %q (type %q) references unknown natsconnection %q",
+				c.ID, c.Type, c.NATSConnection)
+		}
+		if c.Type == STANToKafka || c.Type == KafkaToStan {
+			return fmt.Errorf("connector %q (type %q) cannot set natsconnection, STAN connectors only support the default nats connection",
+				c.ID, c.Type)
+		}
+	}
+
+	return nil
+}
+
 // ConnectorConfig configuration for a bridge connection (of any type)
 type ConnectorConfig struct {
 	ID   string // user specified id for a connector, will be defaulted if none is provided
 	Type string // Can be any of the type constants (STANToKafka, ...)
+
+	NATSConnection string // optional name of a cluster from natsclusters, empty means the default nats block
 
 	Channel         string // Used for stan connections
 	DurableName     string // Optional, used for stan and jetstream connections

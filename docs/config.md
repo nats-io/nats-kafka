@@ -9,6 +9,7 @@ The bridge uses a single configuration file passed on the command line or enviro
 * [Logging](#logging)
 * [Monitoring](#monitoring)
 * [NATS](#nats)
+* [Multiple NATS Clusters](#natsclusters)
 * [NATS Streaming](#stan)
 * [JetStream](#js)
 * [Connectors](#connectors)
@@ -131,6 +132,8 @@ Is used to configure an HTTP or HTTPS port, as well as TLS settings when HTTPS i
 
 * `httpsport` - the port for HTTPS monitoring, a TLS configuration is expected, a value of -1 will tell the server to use an ephemeral port, the port will be logged on startup.
 * `tls` - a [TLS configuration](#tls).
+* `disablemetrics` - turn off the Prometheus [/metrics](monitoring.md#metrics) endpoint, which is otherwise served whenever monitoring is enabled.
+* `disabledashboard` - turn off the browser [/dashboard](monitoring.md#dashboard) page, which is otherwise served whenever monitoring is enabled.
 
 The `httpport` and `httpsport` settings are mutually exclusive, if both are set to a non-zero value the bridge will not start.
 
@@ -138,7 +141,9 @@ The `httpport` and `httpsport` settings are mutually exclusive, if both are set 
 
 ## NATS
 
-The bridge makes a single connection to NATS. This connection is shared by all connectors. Configuration is through the `nats` section of the config file:
+The bridge makes one connection to the default NATS cluster.
+This connection is shared by all connectors that don't name another cluster.
+Configuration is through the `nats` section of the config file:
 
 ```yaml
 nats: {
@@ -152,17 +157,72 @@ nats: {
 NATS can be configured with the following properties:
 
 * `servers` - an array of server URLS
+* `clientname` - (optional) the client connection name reported to the NATS server.
 * `connecttimeout` - the time, in milliseconds, to wait before failing to connect to the NATS server
 * `reconnectwait` - the time, in milliseconds, to wait between reconnect attempts
 * `maxreconnects` - the maximum number of reconnects to try before exiting the bridge with an error.
 * `tls` - (optional) [TLS configuration](#tls). If the NATS server uses unverified TLS with a valid certificate, this setting isn't required.
 * `usercredentials` - (optional) the path to a credentials file for connecting to NATs.
+* `usernkey` - (optional) the path to an NKEY seed file for connecting to NATS.
+
+<a name="natsclusters"></a>
+
+## Multiple NATS Clusters
+
+A single bridge deployment can consume from, and publish to, more than one NATS cluster (for example one cell per brand).
+Additional clusters are declared in the optional `natsclusters` list.
+Each entry uses the same properties as the [`nats`](#nats) block, plus a required `name`.
+Connectors select a cluster with the `natsconnection` property; connectors without it use the default `nats` block.
+
+```yaml
+nats: {
+  servers: ["nats://cell-a:4222"],
+}
+natsclusters: [
+  {
+    name: "cell-b",
+    servers: ["nats://cell-b:4222"],
+  },
+]
+connect: [
+  {
+    type: "NATSToKafka",
+    subject: "telemetry",
+    topic: "brand-telemetry",
+    brokers: ["localhost:9092"],
+  },
+  {
+    type: "NATSToKafka",
+    natsconnection: "cell-b",
+    subject: "telemetry",
+    topic: "brand-telemetry",
+    brokers: ["localhost:9092"],
+  },
+],
+```
+
+Notes:
+
+* Every cluster needs a unique `name`; the name `default` is reserved for the `nats` block.
+* `connecttimeout`, `reconnectwait`, `maxreconnects` and `clientname` default to the values from the `nats` block when not set on a cluster entry.
+* The cluster name is appended to the client connection name, e.g. `NATS Kafka Bridge [cell-b]`.
+* At startup the default cluster must be reachable, but a named cluster that is not only delays its own connectors; the bridge starts and keeps dialing it.
+* A connector on a named cluster that fails to start for any other reason (e.g. a missing stream or denied permission) is also retried on the reconnect interval instead of failing the bridge, so a misconfigured cluster cannot take down the others.
+Connectors on the default cluster still fail the bridge at startup.
+* The bridge only exits when the default cluster's connection is permanently closed.
+A named cluster that becomes unreachable only stops its own connectors; they restart automatically when the cluster is reachable again.
+For that reason set `maxreconnects: -1` in multi-cluster deployments so the NATS clients keep retrying.
+* NATS Streaming (STAN) connectors always use the default cluster; setting `natsconnection` on them is a configuration error.
+* JetStream contexts are created per cluster, the global [`jetstream`](#js) tuning block applies to all of them.
+* `/varz` reports every cluster's connection state in the `nats` array, and each connector reports its cluster in `nats_connection`.
 
 <a name="stan"></a>
 
 ## NATS Streaming
 
-The bridge makes a single connection to a NATS streaming server. This connection is shared by all connectors. Configuration is through the `stan` section of the config file:
+The bridge makes a single connection to a NATS streaming server, always layered on the default NATS cluster.
+This connection is shared by all STAN connectors.
+Configuration is through the `stan` section of the config file:
 
 ```yaml
 stan: {
@@ -184,7 +244,9 @@ NATS streaming can be configured with the following properties:
 
 ## JetStream
 
-The bridge makes a single connection to JetStream. This connection is shared by all connectors. Configuration is through the `jetstream` section of the config file:
+The bridge creates one JetStream context per NATS cluster that has JetStream connectors.
+Each context is shared by that cluster's connectors.
+The `jetstream` tuning section applies to all clusters:
 
 ```
 jetstream: {
@@ -247,6 +309,9 @@ The most important property in the connector configuration is the `type`. The ty
 All connectors can have an optional id, which is used in monitoring:
 
 * `id` - (optional) user defined id that will tag the connection in monitoring JSON.
+* `natsconnection` - (optional) the name of a cluster from [`natsclusters`](#natsclusters) to use for this connector.
+Empty means the default `nats` connection.
+Not allowed on STAN connectors.
 
 For NATS connections, specify:
 

@@ -666,8 +666,19 @@ func TestNATSReconnectTimer(t *testing.T) {
 
 	tbs.Bridge.reconnectLock.Lock()
 	tbs.Bridge.config.ReconnectInterval = 125
-	nc := tbs.Bridge.nats
-	tbs.Bridge.nats = nil
+	tbs.Bridge.reconnectLock.Unlock()
+
+	// simulate a dead cluster: drop the connection and point redials at a
+	// port nothing listens on so the timer keeps re-arming; hold the
+	// reconnectLock because redials read cell.config outside the natsLock
+	tbs.Bridge.reconnectLock.Lock()
+	tbs.Bridge.natsLock.Lock()
+	cell := tbs.Bridge.cells[""]
+	nc := cell.nc
+	savedServers := cell.config.Servers
+	cell.nc = nil
+	cell.config.Servers = []string{"nats://localhost:59998"}
+	tbs.Bridge.natsLock.Unlock()
 	tbs.Bridge.reconnectLock.Unlock()
 
 	tbs.Bridge.checkConnections()
@@ -679,7 +690,10 @@ func TestNATSReconnectTimer(t *testing.T) {
 	time.Sleep(250 * time.Millisecond)
 
 	tbs.Bridge.reconnectLock.Lock()
-	tbs.Bridge.nats = nc
+	tbs.Bridge.natsLock.Lock()
+	cell.nc = nc
+	cell.config.Servers = savedServers
+	tbs.Bridge.natsLock.Unlock()
 	t2 := tbs.Bridge.reconnectTimer
 	tbs.Bridge.reconnectLock.Unlock()
 

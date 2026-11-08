@@ -45,8 +45,19 @@ type Connector interface {
 
 	String() string
 	ID() string
+	NATSConnection() string
 
 	Stats() ConnectorStats
+}
+
+// requiresStan reports whether the connector depends on the bridge's
+// NATS streaming connection
+func requiresStan(c Connector) bool {
+	switch c.(type) {
+	case *Stan2KafkaConnector, *Kafka2StanConnector:
+		return true
+	}
+	return false
 }
 
 func validateStanConfig(config *conf.ConnectorConfig) error {
@@ -125,6 +136,12 @@ func (conn *BridgeConnector) ID() string {
 	return conn.stats.ID()
 }
 
+// NATSConnection returns the name of the NATS cluster this connector is
+// bound to, empty for the default cluster
+func (conn *BridgeConnector) NATSConnection() string {
+	return conn.config.NATSConnection
+}
+
 // Stats returns a copy of the current stats for this connector
 func (conn *BridgeConnector) Stats() ConnectorStats {
 	return conn.stats.Stats()
@@ -136,11 +153,16 @@ func (conn *BridgeConnector) init(bridge *NATSKafkaBridge, config conf.Connector
 	conn.bridge = bridge
 	conn.writers = &sync.Map{}
 
+	if config.NATSConnection != "" {
+		name = fmt.Sprintf("[%s] %s", config.NATSConnection, name)
+	}
+
 	id := conn.config.ID
 	if id == "" {
 		id = nuid.Next()
 	}
 	conn.stats = NewConnectorStatsHolder(name, id)
+	conn.stats.SetNATSConnection(config.NATSConnection)
 
 	conn.initDestTemplate(destTpl)
 }
@@ -153,10 +175,14 @@ type NATSCallback func(msg kafka.Message) error
 type ShutdownCallback func() error
 
 func (conn *BridgeConnector) jetStreamMessageHandler(msg kafka.Message) error {
+	js := conn.bridge.JetStreamFor(conn.config.NATSConnection)
+	if js == nil {
+		return fmt.Errorf("bridge not connected to JetStream on cluster %q", conn.config.NATSConnection)
+	}
 	nMsg := nats.NewMsg(conn.dest(msg))
 	nMsg.Header = conn.convertFromKafkaToNatsHeaders(msg.Headers)
 	nMsg.Data = msg.Value
-	_, err := conn.bridge.JetStream().PublishMsg(nMsg)
+	_, err := js.PublishMsg(nMsg)
 	return err
 }
 
@@ -165,10 +191,14 @@ func (conn *BridgeConnector) stanMessageHandler(msg kafka.Message) error {
 }
 
 func (conn *BridgeConnector) natsMessageHandler(msg kafka.Message) error {
+	nc := conn.bridge.NATSFor(conn.config.NATSConnection)
+	if nc == nil {
+		return fmt.Errorf("bridge not connected to NATS on cluster %q", conn.config.NATSConnection)
+	}
 	nMsg := nats.NewMsg(conn.dest(msg))
 	nMsg.Header = conn.convertFromKafkaToNatsHeaders(msg.Headers)
 	nMsg.Data = msg.Value
-	return conn.bridge.NATS().PublishMsg(nMsg)
+	return nc.PublishMsg(nMsg)
 }
 
 func (conn *BridgeConnector) calculateKey(subject string, replyto string) []byte {
@@ -256,6 +286,26 @@ func (conn *BridgeConnector) convertFromNatsToKafkaHeaders(hdr nats.Header) []sa
 	return []sarama.RecordHeader{} // empty header by default
 }
 
+func convertFromNatsToKafkaHeadersWithMetaData(conn *BridgeConnector, msg *nats.Msg) []sarama.RecordHeader {
+	metaMap := make(map[string]string)
+	metaMap["subject"] = msg.Subject
+	metaData, err := msg.Metadata()
+
+	if err == nil {
+		// only non stream message will result into error
+		metaMap["num_pending"] = fmt.Sprintf("%d", metaData.NumPending)
+		metaMap["timestamp"] = metaData.Timestamp.UTC().String()
+		metaMap["stream_seq"] = fmt.Sprintf("%d", metaData.Sequence.Stream)
+		metaMap["consumer_seq"] = fmt.Sprintf("%d", metaData.Sequence.Consumer)
+	}
+
+	headers := conn.convertFromNatsToKafkaHeaders(msg.Header)
+	for key := range metaMap {
+		headers = append(headers, sarama.RecordHeader{Key: []byte(key), Value: []byte(metaMap[key])})
+	}
+	return headers
+}
+
 // set up a nats subscription, assumes the lock is held
 func (conn *BridgeConnector) subscribeToNATS(subject string, queueName string) (*nats.Subscription, error) {
 	traceEnabled := conn.bridge.Logger().TraceEnabled()
@@ -271,25 +321,26 @@ func (conn *BridgeConnector) subscribeToNATS(subject string, queueName string) (
 		})
 
 		if err != nil {
-			if traceEnabled {
-				conn.bridge.Logger().Tracef("%s wrote message to kafka", conn.String())
-			}
 			conn.stats.AddMessageIn(l)
 			conn.bridge.Logger().Errorf("connector publish failure, %s, %s", conn.String(), err.Error())
 		} else {
+			if traceEnabled {
+				conn.bridge.Logger().Tracef("%s wrote message to kafka", conn.String())
+			}
 			conn.stats.AddRequest(l, l, time.Since(start))
 		}
 	}
 
-	if conn.bridge.NATS() == nil {
-		return nil, fmt.Errorf("bridge not configured to use NATS streaming")
+	nc := conn.bridge.NATSFor(conn.config.NATSConnection)
+	if nc == nil {
+		return nil, fmt.Errorf("bridge not connected to NATS on cluster %q", conn.config.NATSConnection)
 	}
 
 	if queueName == "" {
-		return conn.bridge.NATS().Subscribe(subject, callback)
+		return nc.Subscribe(subject, callback)
 	}
 
-	return conn.bridge.NATS().QueueSubscribe(subject, queueName, callback)
+	return nc.QueueSubscribe(subject, queueName, callback)
 }
 
 // subscribeToChannel uses the bridges STAN connection to subscribe based on
@@ -355,8 +406,9 @@ func (conn *BridgeConnector) subscribeToChannel() (stan.Subscription, error) {
 
 // set up a JetStream subscription, assumes the lock is held
 func (conn *BridgeConnector) subscribeToJetStream(subject string, queueName string) (*nats.Subscription, error) {
-	if conn.bridge.JetStream() == nil {
-		return nil, fmt.Errorf("bridge not configured to use JetStream")
+	js := conn.bridge.JetStreamFor(conn.config.NATSConnection)
+	if js == nil {
+		return nil, fmt.Errorf("bridge not connected to JetStream on cluster %q", conn.config.NATSConnection)
 	}
 
 	options := []nats.SubOpt{nats.AckExplicit()}
@@ -401,7 +453,7 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string, queueName stri
 		err := conn.writer(msg).Write(kafka.Message{
 			Key:     key,
 			Value:   msg.Data,
-			Headers: conn.convertFromNatsToKafkaHeaders(msg.Header),
+			Headers: convertFromNatsToKafkaHeadersWithMetaData(conn, msg),
 		})
 
 		if err != nil {
@@ -419,15 +471,17 @@ func (conn *BridgeConnector) subscribeToJetStream(subject string, queueName stri
 			if traceEnabled {
 				conn.bridge.Logger().Tracef("%s acked message to kafka", conn.String())
 			}
-			conn.stats.AddRequest(l, l, time.Since(start))
+
+			metaData, _ := msg.Metadata()
+			conn.stats.AddStreamRequest(l, l, time.Since(start), metaData.NumPending)
 		}
 	}
 
 	if queueName == "" {
-		return conn.bridge.JetStream().Subscribe(subject, callback, options...)
+		return js.Subscribe(subject, callback, options...)
 	}
 
-	return conn.bridge.JetStream().QueueSubscribe(subject, queueName, callback, options...)
+	return js.QueueSubscribe(subject, queueName, callback, options...)
 }
 
 func (conn *BridgeConnector) setUpListener(target kafka.Consumer, natsCallbackFunc NATSCallback) (ShutdownCallback, error) {

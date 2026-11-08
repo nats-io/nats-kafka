@@ -40,7 +40,7 @@ func (conn *NATS2KafkaConnector) Start() error {
 	conn.Lock()
 	defer conn.Unlock()
 
-	if !conn.bridge.CheckNATS() {
+	if !conn.bridge.CheckNATSFor(conn.config.NATSConnection) {
 		return fmt.Errorf("%s connector requires nats to be available", conn.String())
 	}
 
@@ -78,7 +78,7 @@ func (conn *NATS2KafkaConnector) Shutdown() error {
 
 // CheckConnections ensures the nats/stan connection and report an error if it is down
 func (conn *NATS2KafkaConnector) CheckConnections() error {
-	if !conn.bridge.CheckNATS() {
+	if !conn.bridge.CheckNATSFor(conn.config.NATSConnection) {
 		return fmt.Errorf("%s connector requires nats to be available", conn.String())
 	}
 	return nil

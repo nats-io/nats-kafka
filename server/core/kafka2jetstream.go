@@ -43,7 +43,7 @@ func (conn *Kafka2JetStreamConnector) Start() error {
 	conn.Lock()
 	defer conn.Unlock()
 
-	if !conn.bridge.CheckJetStream() {
+	if !conn.bridge.CheckJetStreamFor(conn.config.NATSConnection) {
 		return fmt.Errorf("%s connector requires JetStream to be available", conn.String())
 	}
 
@@ -102,7 +102,7 @@ func (conn *Kafka2JetStreamConnector) Shutdown() error {
 
 // CheckConnections ensures the nats/stan connection and report an error if it is down
 func (conn *Kafka2JetStreamConnector) CheckConnections() error {
-	if !conn.bridge.CheckJetStream() {
+	if !conn.bridge.CheckJetStreamFor(conn.config.NATSConnection) {
 		return fmt.Errorf("%s connector requires nats jetstream to be available", conn.String())
 	}
 	return nil

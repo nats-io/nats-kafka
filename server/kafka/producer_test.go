@@ -19,9 +19,81 @@ package kafka
 import (
 	"testing"
 
+	"github.com/Shopify/sarama"
 	"github.com/riferrei/srclient"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestRefineKeyWithSubjectHeader(t *testing.T) {
+	withSubject := func(subject string) []sarama.RecordHeader {
+		return []sarama.RecordHeader{
+			{Key: []byte("num_pending"), Value: []byte("0")},
+			{Key: []byte(subjectHeaderKey), Value: []byte(subject)},
+		}
+	}
+
+	tests := []struct {
+		name     string
+		key      []byte
+		headers  []sarama.RecordHeader
+		expected []byte
+	}{
+		{
+			name:     "inserts car_id from subject header",
+			key:      []byte("STATE.GLOBAL_V2C.19.CELL2.>"),
+			headers:  withSubject("STATE.GLOBAL_V2C.19.CELL2.01-244530648.dyn.foo"),
+			expected: []byte("STATE.GLOBAL_V2C.19.CELL2.01-244530648.>"),
+		},
+		{
+			name:     "works when subject ends exactly at car_id",
+			key:      []byte("STATE.GLOBAL_V2C.19.CELL2.>"),
+			headers:  withSubject("STATE.GLOBAL_V2C.19.CELL2.01-244530648"),
+			expected: []byte("STATE.GLOBAL_V2C.19.CELL2.01-244530648.>"),
+		},
+		{
+			name:     "deployment prefix BULK is preserved",
+			key:      []byte("BULK.GLOBAL_V2C.19.CELL2.>"),
+			headers:  withSubject("BULK.GLOBAL_V2C.19.CELL2.01-244530648.dyn"),
+			expected: []byte("BULK.GLOBAL_V2C.19.CELL2.01-244530648.>"),
+		},
+		{
+			name:     "no subject header keeps original key",
+			key:      []byte("STATE.GLOBAL_V2C.19.CELL2.>"),
+			headers:  []sarama.RecordHeader{{Key: []byte("num_pending"), Value: []byte("0")}},
+			expected: []byte("STATE.GLOBAL_V2C.19.CELL2.>"),
+		},
+		{
+			name:     "nil headers keeps original key",
+			key:      []byte("STATE.GLOBAL_V2C.19.CELL2.>"),
+			headers:  nil,
+			expected: []byte("STATE.GLOBAL_V2C.19.CELL2.>"),
+		},
+		{
+			name:     "key without trailing wildcard is unchanged",
+			key:      []byte("STATE.GLOBAL_V2C.19.CELL2.01-244530648"),
+			headers:  withSubject("STATE.GLOBAL_V2C.19.CELL2.01-244530648.dyn"),
+			expected: []byte("STATE.GLOBAL_V2C.19.CELL2.01-244530648"),
+		},
+		{
+			name:     "subject too short keeps original key",
+			key:      []byte("STATE.GLOBAL_V2C.19.CELL2.>"),
+			headers:  withSubject("STATE.GLOBAL_V2C.19.CELL2"),
+			expected: []byte("STATE.GLOBAL_V2C.19.CELL2.>"),
+		},
+		{
+			name:     "empty key is unchanged",
+			key:      []byte(""),
+			headers:  withSubject("STATE.GLOBAL_V2C.19.CELL2.01-244530648"),
+			expected: []byte(""),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, refineKeyWithSubjectHeader(tc.key, tc.headers))
+		})
+	}
+}
 
 func TestSerializePayloadAvro(t *testing.T) {
 	server := newMockSchemaServer(t)

@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"strings"
 	"time"
 
@@ -45,6 +46,9 @@ const (
 	saslPassword = "admin-secret"
 )
 
+// TestCellName is the name used for the second NATS cluster in multi-cell tests
+const TestCellName = "cell2"
+
 // TestEnv encapsulate a bridge test environment
 type TestEnv struct {
 	Config        *conf.NATSKafkaBridgeConfig
@@ -56,8 +60,15 @@ type TestEnv struct {
 	SC stan.Conn             // for bypassing the bridge
 	JS nats.JetStreamContext // for bypassing the bridge
 
+	// second NATS cluster (cell) for multi-cell tests, no STAN
+	Gnatsd2 *gnatsserver.Server
+	NC2     *nats.Conn            // for bypassing the bridge on the second cell
+	JS2     nats.JetStreamContext // for bypassing the bridge on the second cell
+
 	natsPort       int
 	natsURL        string
+	natsPort2      int
+	natsURL2       string
 	clusterName    string
 	clientID       string // we keep this so we stay the same on reconnect
 	bridgeClientID string
@@ -87,6 +98,28 @@ func collectTopics(connections []conf.ConnectorConfig) []string {
 	return topics
 }
 
+// addStreamsForConnectors creates a JetStream stream per JetStream-type
+// connector, on the cell the connector is bound to
+func (tbs *TestEnv) addStreamsForConnectors(connections []conf.ConnectorConfig) error {
+	for _, cc := range connections {
+		if !strings.Contains(cc.Type, "JetStream") {
+			continue
+		}
+		js := tbs.JS
+		if cc.NATSConnection == TestCellName {
+			js = tbs.JS2
+		}
+		_, err := js.AddStream(&nats.StreamConfig{
+			Name:     nuid.Next(),
+			Subjects: []string{cc.Subject},
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // StartTestEnvironment calls StartTestEnvironmentInfrastructure
 // followed by StartBridge
 func StartTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, error) {
@@ -95,17 +128,8 @@ func StartTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, error) 
 		return nil, err
 	}
 
-	for _, cc := range connections {
-		if !strings.Contains(cc.Type, "JetStream") {
-			continue
-		}
-		_, err := tbs.JS.AddStream(&nats.StreamConfig{
-			Name:     nuid.Next(),
-			Subjects: []string{cc.Subject},
-		})
-		if err != nil {
-			return nil, err
-		}
+	if err := tbs.addStreamsForConnectors(connections); err != nil {
+		return nil, err
 	}
 
 	err = tbs.StartBridge(connections)
@@ -123,17 +147,8 @@ func StartTLSTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, erro
 	if err != nil {
 		return nil, err
 	}
-	for _, cc := range connections {
-		if !strings.Contains(cc.Type, "JetStream") {
-			continue
-		}
-		_, err := tbs.JS.AddStream(&nats.StreamConfig{
-			Name:     nuid.Next(),
-			Subjects: []string{cc.Subject},
-		})
-		if err != nil {
-			return nil, err
-		}
+	if err := tbs.addStreamsForConnectors(connections); err != nil {
+		return nil, err
 	}
 	err = tbs.StartBridge(connections)
 	if err != nil {
@@ -152,17 +167,8 @@ func StartSASLTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, err
 	}
 	tbs.user = saslUser
 	tbs.password = saslPassword
-	for _, cc := range connections {
-		if !strings.Contains(cc.Type, "JetStream") {
-			continue
-		}
-		_, err := tbs.JS.AddStream(&nats.StreamConfig{
-			Name:     nuid.Next(),
-			Subjects: []string{cc.Subject},
-		})
-		if err != nil {
-			return nil, err
-		}
+	if err := tbs.addStreamsForConnectors(connections); err != nil {
+		return nil, err
 	}
 	err = tbs.StartBridge(connections)
 	if err != nil {
@@ -287,6 +293,17 @@ func (tbs *TestEnv) StartBridge(connections []conf.ConnectorConfig) error {
 		ConnectTimeout: 2000,
 		ReconnectWait:  2000,
 		MaxReconnects:  5,
+	}
+	if tbs.natsURL2 != "" {
+		config.NATSClusters = []conf.NATSConfig{
+			{
+				Name:           TestCellName,
+				Servers:        []string{tbs.natsURL2},
+				ConnectTimeout: 2000,
+				ReconnectWait:  250,
+				MaxReconnects:  -1,
+			},
+		}
 	}
 	config.STAN = conf.NATSStreamingConfig{
 		ClusterID:          tbs.clusterName,
@@ -443,6 +460,83 @@ func (tbs *TestEnv) StartNATSandStan(port int, clusterID string, clientID string
 	return nil
 }
 
+// StartSecondNATS starts an additional NATS server acting as a second
+// cluster (cell) with JetStream enabled, no STAN
+func (tbs *TestEnv) StartSecondNATS(port int) error {
+	opts := gnatsd.DefaultTestOptions
+	opts.Port = port
+	tbs.Gnatsd2 = gnatsd.RunServer(&opts)
+	err := tbs.Gnatsd2.EnableJetStream(&gnatsserver.JetStreamConfig{
+		MaxMemory: 1024,
+	})
+	if err != nil {
+		return err
+	}
+
+	tbs.natsPort2 = tbs.Gnatsd2.Addr().(*net.TCPAddr).Port
+	tbs.natsURL2 = fmt.Sprintf("nats://localhost:%d", tbs.natsPort2)
+
+	nc, err := nats.Connect(tbs.natsURL2)
+	if err != nil {
+		return err
+	}
+	tbs.NC2 = nc
+
+	js, err := nc.JetStream()
+	if err != nil {
+		return err
+	}
+	tbs.JS2 = js
+
+	return nil
+}
+
+// StopSecondNATS shuts down the second cell's NATS server
+func (tbs *TestEnv) StopSecondNATS() {
+	if tbs.NC2 != nil {
+		tbs.NC2.Close()
+		tbs.NC2 = nil
+	}
+
+	if tbs.Gnatsd2 != nil {
+		tbs.Gnatsd2.Shutdown()
+		tbs.Gnatsd2 = nil
+	}
+}
+
+// RestartSecondNATS starts the second cell's NATS server again on the same port
+func (tbs *TestEnv) RestartSecondNATS() error {
+	tbs.StopSecondNATS()
+	return tbs.StartSecondNATS(tbs.natsPort2)
+}
+
+// StartTwoCellTestEnvironment creates the test infrastructure plus a second
+// NATS server, then starts a bridge configured with both clusters. Connectors
+// with NATSConnection set to TestCellName are bound to the second cell.
+func StartTwoCellTestEnvironment(connections []conf.ConnectorConfig) (*TestEnv, error) {
+	tbs, err := StartTestEnvironmentInfrastructure(false, false, collectTopics(connections))
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tbs.StartSecondNATS(-1); err != nil {
+		tbs.Close()
+		return nil, err
+	}
+
+	if err := tbs.addStreamsForConnectors(connections); err != nil {
+		tbs.Close()
+		return nil, err
+	}
+
+	err = tbs.StartBridge(connections)
+	if err != nil {
+		tbs.Close()
+		return nil, err
+	}
+	return tbs, nil
+}
+
 // StopBridge stops the bridge
 func (tbs *TestEnv) StopBridge() {
 	if tbs.Bridge != nil {
@@ -520,6 +614,8 @@ func (tbs *TestEnv) Close() {
 	if tbs.Gnatsd != nil {
 		tbs.Gnatsd.Shutdown()
 	}
+
+	tbs.StopSecondNATS()
 }
 
 // SendMessageToKafka puts a message on the kafka topic, bypassing the bridge
